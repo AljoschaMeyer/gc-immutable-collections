@@ -5,3 +5,6 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc a5244be38acda17d408a4c778d999bbbd93e44acb70d7812a676eeaeb2f3c026 # shrinks to c = Singleton(0)
+cc 4a30a2efa2c645db226a468fe38d856fd186ddb5185ec407ae682165c8d7e98c # shrinks to c = New, i = 0
+cc 7312846d07677b0561ef79fce17cd347a24247967b8ea82619f232b0786d2db4 # shrinks to c = Concat(Concat(Singleton(0), Concat(Singleton(0), Singleton(0))), Concat(Singleton(0), Singleton(0))), i = 14735656264866887684
+cc bafa956f018842ce29c2f3b62fc49d6977736a36c99def04adb8cb9cb06bdb79 # shrinks to c = New(Concat(New, Singleton(0)), 0), i = 0, by = 1

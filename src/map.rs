@@ -33,13 +33,15 @@ use self::Node::*;
 
 fn n2<K: Trace + 'static, V: Trace + 'static>(l: Map<K, V>, k: K, v: V, r: Map<K, V>) -> Map<K, V> {
     let lc = l.count();
-    Map(Some(Gc::new(N2([(l, k, v)], r, lc))))
+    let rc = r.count();
+    Map(Some(Gc::new(N2([(l, k, v)], r, lc + rc + 1))))
 }
 
 fn n3<K: Trace + 'static, V: Trace + 'static>(l: Map<K, V>, lk: K, lv: V, m: Map<K, V>, mk: K, mv: V, r: Map<K, V>) -> Map<K, V> {
     let lc = l.count();
     let mc = m.count();
-    Map(Some(Gc::new(N3([(l, lk, lv), (m, mk, mv)], r, lc + mc))))
+    let rc = r.count();
+    Map(Some(Gc::new(N3([(l, lk, lv), (m, mk, mv)], r, lc + mc + rc + 2))))
 }
 
 impl<K: Trace + 'static, V: Trace + 'static> Map<K, V> {

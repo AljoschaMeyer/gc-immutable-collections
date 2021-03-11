@@ -2,7 +2,7 @@
 // [2-3 tree](https://en.wikipedia.org/wiki/2%E2%80%933_tree).
 
 use std::borrow::Borrow;
-use std::cmp::Ordering::{*};
+use std::cmp::Ordering::{self, *};
 
 use gc::{Gc, Trace, custom_trace};
 use gc_derive::{Trace, Finalize};
@@ -413,632 +413,328 @@ fn n3_handle_insert_r<'a, V>(
     }
 }
 
+impl<V: PartialEq + Clone + Trace + 'static> PartialEq for Array<V> {
+    fn eq(&self, rhs: &Self) -> bool {
+        match (&self.0, &rhs.0) {
+            (None, None) => return true,
+            (Some(_), None) | (None, Some(_)) => return false,
+            (Some(n1), Some(n2)) if  Gc::ptr_eq(n1, n2) => return true,
+            _ => {}
+        };
 
+        let mut p1 = Focus::new(self, 0);
+        let mut p2 = Focus::new(rhs, 0);
 
+        loop {
+            match (p1.get_relative(0), p2.get_relative(0)) {
+                (None, None) => return true,
+                (Some(_), None) | (None, Some(_)) => return false,
+                (Some(xv), Some(yv)) => {
+                    if xv != yv {
+                        return false;
+                    }
+                    p1.refocus(1);
+                    p2.refocus(1);
+                }
+            }
+        }
+    }
+}
 
-// impl<K: PartialEq + Clone + Trace + 'static, V: PartialEq + Clone + Trace + 'static> PartialEq for Array<V> {
-//     fn eq(&self, rhs: &Self) -> bool {
-//         match (&self.0, &rhs.0) {
-//             (None, None) => return true,
-//             (Some(_), None) | (None, Some(_)) => return false,
-//             (Some(n1), Some(n2)) if  Gc::ptr_eq(n1, n2) => return true,
-//             _ => {}
-//         };
-//
-//         let mut p1 = self.producer_min();
-//         let mut p2 = rhs.producer_min();
-//
-//         loop {
-//             match (step_next(&mut p1.0), step_next(&mut p2.0)) {
-//                 (None, None) => return true,
-//                 (Some(_), None) | (None, Some(_)) => return false,
-//                 (Some((xk, xv)), Some((yk, yv))) => {
-//                     if xk != yk || xv != yv {
-//                         return false;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-// impl<K: PartialEq + Clone + Trace + 'static, V: PartialEq + Clone + Trace + 'static> Eq for Array<V> {}
-//
-// impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 'static> PartialOrd for Array<V> {
-//     fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
-//         match (&self.0, &rhs.0) {
-//             (None, None) => return Some(Ordering::Equal),
-//             (Some(_), None) => return Some(Ordering::Greater),
-//             (None, Some(_)) => return Some(Ordering::Less),
-//             (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return Some(Ordering::Equal),
-//             _ => {}
-//         };
-//
-//         let mut p1 = self.producer_min();
-//         let mut p2 = rhs.producer_min();
-//
-//         loop {
-//             match (step_next(&mut p1.0), step_next(&mut p2.0)) {
-//                 (None, None) => return Some(Ordering::Equal),
-//                 (Some(_), None) => return Some(Ordering::Greater),
-//                 (None, Some(_)) => return Some(Ordering::Less),
-//                 (Some((xk, xv)), Some((yk, yv))) => {
-//                     match xk.partial_cmp(&yk) {
-//                         None => return None,
-//                         Some(Ordering::Less) => return Some(Ordering::Less),
-//                         Some(Ordering::Greater) => return Some(Ordering::Greater),
-//                         Some(Ordering::Equal) => {
-//                             match xv.partial_cmp(&yv) {
-//                                 None => return None,
-//                                 Some(Ordering::Less) => return Some(Ordering::Less),
-//                                 Some(Ordering::Greater) => return Some(Ordering::Greater),
-//                                 Some(Ordering::Equal) => {}
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//
-//     fn lt(&self, rhs: &Self) -> bool {
-//         match (&self.0, &rhs.0) {
-//             (None, None) => return false,
-//             (Some(_), None) => return false,
-//             (None, Some(_)) => return true,
-//             (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return false,
-//             _ => {}
-//         };
-//
-//         let mut p1 = self.producer_min();
-//         let mut p2 = rhs.producer_min();
-//
-//         loop {
-//             match (step_next(&mut p1.0), step_next(&mut p2.0)) {
-//                 (None, None) => return false,
-//                 (Some(_), None) => return false,
-//                 (None, Some(_)) => return true,
-//                 (Some((xk, xv)), Some((yk, yv))) => {
-//                     match xk.partial_cmp(&yk) {
-//                         None => return false,
-//                         Some(Ordering::Less) => return true,
-//                         Some(Ordering::Greater) => return false,
-//                         Some(Ordering::Equal) => {
-//                             match xv.partial_cmp(&yv) {
-//                                 None => return false,
-//                                 Some(Ordering::Less) => return true,
-//                                 Some(Ordering::Greater) => return false,
-//                                 Some(Ordering::Equal) => {}
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//
-//     fn le(&self, rhs: &Self) -> bool {
-//         match (&self.0, &rhs.0) {
-//             (None, None) => return true,
-//             (Some(_), None) => return false,
-//             (None, Some(_)) => return true,
-//             (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return true,
-//             _ => {}
-//         };
-//
-//         let mut p1 = self.producer_min();
-//         let mut p2 = rhs.producer_min();
-//
-//         loop {
-//             match (step_next(&mut p1.0), step_next(&mut p2.0)) {
-//                 (None, None) => return true,
-//                 (Some(_), None) => return false,
-//                 (None, Some(_)) => return true,
-//                 (Some((xk, xv)), Some((yk, yv))) => {
-//                     match xk.partial_cmp(&yk) {
-//                         None => return false,
-//                         Some(Ordering::Less) => return true,
-//                         Some(Ordering::Greater) => return false,
-//                         Some(Ordering::Equal) => {
-//                             match xv.partial_cmp(&yv) {
-//                                 None => return false,
-//                                 Some(Ordering::Less) => return true,
-//                                 Some(Ordering::Greater) => return false,
-//                                 Some(Ordering::Equal) => {}
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//
-//     fn ge(&self, rhs: &Self) -> bool {
-//         match (&self.0, &rhs.0) {
-//             (None, None) => return true,
-//             (Some(_), None) => return true,
-//             (None, Some(_)) => return false,
-//             (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return true,
-//             _ => {}
-//         };
-//
-//         let mut p1 = self.producer_min();
-//         let mut p2 = rhs.producer_min();
-//
-//         loop {
-//             match (step_next(&mut p1.0), step_next(&mut p2.0)) {
-//                 (None, None) => return true,
-//                 (Some(_), None) => return true,
-//                 (None, Some(_)) => return false,
-//                 (Some((xk, xv)), Some((yk, yv))) => {
-//                     match xk.partial_cmp(&yk) {
-//                         None => return false,
-//                         Some(Ordering::Less) => return false,
-//                         Some(Ordering::Greater) => return true,
-//                         Some(Ordering::Equal) => {
-//                             match xv.partial_cmp(&yv) {
-//                                 None => return false,
-//                                 Some(Ordering::Less) => return false,
-//                                 Some(Ordering::Greater) => return true,
-//                                 Some(Ordering::Equal) => {}
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//
-//     fn gt(&self, rhs: &Self) -> bool {
-//         match (&self.0, &rhs.0) {
-//             (None, None) => return false,
-//             (Some(_), None) => return true,
-//             (None, Some(_)) => return false,
-//             (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return false,
-//             _ => {}
-//         };
-//
-//         let mut p1 = self.producer_min();
-//         let mut p2 = rhs.producer_min();
-//
-//         loop {
-//             match (step_next(&mut p1.0), step_next(&mut p2.0)) {
-//                 (None, None) => return false,
-//                 (Some(_), None) => return true,
-//                 (None, Some(_)) => return false,
-//                 (Some((xk, xv)), Some((yk, yv))) => {
-//                     match xk.partial_cmp(&yk) {
-//                         None => return false,
-//                         Some(Ordering::Less) => return false,
-//                         Some(Ordering::Greater) => return true,
-//                         Some(Ordering::Equal) => {
-//                             match xv.partial_cmp(&yv) {
-//                                 None => return false,
-//                                 Some(Ordering::Less) => return false,
-//                                 Some(Ordering::Greater) => return true,
-//                                 Some(Ordering::Equal) => {}
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-//
-// impl<V: Ord + Clone + Trace + 'static> Ord for Array<V> {
-//     fn cmp(&self, rhs: &Self) -> Ordering {
-//         self.partial_cmp(rhs).unwrap()
-//     }
-// }
-//
-// pub struct Producer<V: Trace + 'static>(Vec<(Array<V>, u8)>);
-//
-// fn step_next<K: Clone + Trace + 'static, V: Clone + Trace + 'static>(positions: &mut Vec<(Array<V>, u8)>) -> Option<(V)> {
-//     let len = positions.len();
-//     let p = positions[len - 1].clone();
-//
-//     match &(p.0).0 {
-//         None => None,
-//         Some(n) => match (n.borrow(), p.1) {
-//             (N2(..), 3..=5) | (N3(..), 5) if len == 1 => None,
-//             (N2(..), 3..=5) | (N3(..), 5) => {
-//                 positions.pop();
-//                 step_next(positions)
-//             }
-//             (N2([(l, _, _)], _, _), 0) => {
-//                 positions[len - 1].1 = 1;
-//                 positions.push((l.clone(), 0));
-//                 step_next(positions)
-//             }
-//             (N2([(_, v)], _, _), 1) => {
-//                 positions[len - 1].1 = 2;
-//                 Some((k.clone(), v.clone()))
-//             }
-//             (N2(_, r, _), 2) => {
-//                 positions[len - 1].1 = 3;
-//                 positions.push((r.clone(), 0));
-//                 step_next(positions)
-//             }
-//             (N3([(l, _, _), _], _, _), 0) => {
-//                 positions[len - 1].1 = 1;
-//                 positions.push((l.clone(), 0));
-//                 step_next(positions)
-//             }
-//             (N3([(_, lv), _], _, _), 1) => {
-//                 positions[len - 1].1 = 2;
-//                 Some((lv.clone()))
-//             }
-//             (N3([_, (m, _, _)], _, _), 2) => {
-//                 positions[len - 1].1 = 3;
-//                 positions.push((m.clone(), 0));
-//                 step_next(positions)
-//             }
-//             (N3([_, (_, mk, mv)], _, _), 3) => {
-//                 positions[len - 1].1 = 4;
-//                 Some((mk.clone(), mv.clone()))
-//             }
-//             (N3(_, r, _), 4) => {
-//                 positions[len - 1].1 = 5;
-//                 positions.push((r.clone(), 0));
-//                 step_next(positions)
-//             }
-//             (N2(..), 6..=255) | (N3(..), 6..=255) => unreachable!(),
-//         }
-//     }
-// }
-//
-// // fn step_prev<K: Clone, V: Clone>(positions: &mut Vec<(Array<V>, u8)>) -> Option<(V)> {
-// //     let len = positions.len();
-// //     let p = positions[len - 1].clone();
-// //
-// //     match &(p.0).0 {
-// //         None => None,
-// //         Some(n) => match (n.borrow(), p.1) {
-// //             (_, 0) if len == 1 => None,
-// //             (_, 0) => {
-// //                 positions.pop();
-// //                 step_prev(positions)
-// //             }
-// //             (N2(_, r, _), 3..=5) => {
-// //                 positions[len - 1].1 = 2;
-// //                 positions.push((r.clone(), 5));
-// //                 step_prev(positions)
-// //             }
-// //             (N2([(_, v)], _, _), 2) => {
-// //                 positions[len - 1].1 = 1;
-// //                 Some((k.clone(), v.clone()))
-// //             }
-// //             (N2([(l, _, _)], _, _), 1) => {
-// //                 positions[len - 1].1 = 0;
-// //                 positions.push((l.clone(), 5));
-// //                 step_prev(positions)
-// //             }
-// //             (N3(_, r, _), 5) => {
-// //                 positions[len - 1].1 = 4;
-// //                 positions.push((r.clone(), 5));
-// //                 step_prev(positions)
-// //             }
-// //             (N3([_, (_, mk, mv)], _, _), 4) => {
-// //                 positions[len - 1].1 = 3;
-// //                 Some((mk.clone(), mv.clone()))
-// //             }
-// //             (N3([_, (m, _, _)], _, _), 3) => {
-// //                 positions[len - 1].1 = 2;
-// //                 positions.push((m.clone(), 5));
-// //                 step_prev(positions)
-// //             }
-// //             (N3([(_, lv), _], _, _), 2) => {
-// //                 positions[len - 1].1 = 1;
-// //                 Some((lv.clone()))
-// //             }
-// //             (N3([(l, _, _), _], _, _), 1) => {
-// //                 positions[len - 1].1 = 0;
-// //                 positions.push((l.clone(), 5));
-// //                 step_prev(positions)
-// //             }
-// //             (N2(..), 6..=255) | (N3(..), 6..=255) => unreachable!(),
-// //         }
-// //     }
-// // }
-//
-// // impl<K: Clone, V: Clone> Iterator for Producer<V> {
-// //     type Item = (V);
-// //
-// //     fn next(&mut self) -> Option<Self::Item> {
-// //         step_next(&mut self.0)
-// //     }
-// // }
-//
-//
-//
-//
-//
-//
-//
-// // //////////////////////////////////////// debug /testing stuff
-// //
-// // pub fn map_to_vec(m: &Array, out: &mut Vec<(Value, Foo)>) {
-// //     node_to_vec(&m.0, out)
-// // }
-// //
-// // fn node_to_vec(n: &Node, out: &mut Vec<(Value, Foo)>) {
-// //     match n {
-// //         Leaf => {},
-// //         N2(n) => {
-// //             let (ref l, ref k, ref v, ref r, _) = &(**n);
-// //             node_to_vec(l, out);
-// //             out.push((k.clone(), v.clone()));
-// //             node_to_vec(r, out);
-// //         }
-// //         N3(n) => {
-// //             let (ref l, ref lk, ref lv, ref m, ref ref rv, ref r, _) = &(**n);
-// //             node_to_vec(l, out);
-// //             out.push((lv.clone()));
-// //             node_to_vec(m, out);
-// //             out.push((rv.clone()));
-// //             node_to_vec(r, out);
-// //         }
-// //     }
-// // }
-// //
-// //
-// // use std::collections::BTreeArray;
-// //
-// // // fn fuzzy(data: &[u8]) {
-// // //     // Foo
-// // //     let mut control = BTreeArray::new();
-// // //     let mut m = Array::new();
-// // //
-// // //     for b in data {
-// // //         // m = m.insert(Value::int(*b as i64), Foo);
-// // //         // control.insert(Value::int(*b as i64), Foo);
-// // //
-// // //         match *b {
-// // //             0...63 => {
-// // //                 m = m.insert(Value::int((b & 0b0011_1111) as i64), Foo);
-// // //                 control.insert(Value::int((b & 0b0011_1111) as i64), Foo);
-// // //                 println!("insert {:?}", b & 0b0011_1111);
-// // //             }
-// // //             64...127 => {
-// // //                 m = m.remove(&Value::int((b & 0b0011_1111) as i64));
-// // //                 control.remove(&Value::int((b & 0b0011_1111) as i64));
-// // //                 println!("remove {:?}", b & 0b0011_1111);
-// // //             }
-// // //             128...191 => {
-// // //                 let key = Value::int((b & 0b0011_1111) as i64);
-// // //                 let (l, _) = m.split(&key);
-// // //                 println!("split-l {:?}", b & 0b0011_1111);
-// // //                 println!("splitl: ({:?}, {:?}, _)", l, k);
-// // //
-// // //                 // m = l;
-// // //                 match k {
-// // //                     None => m = l,
-// // //                     Some(v) => m = l.insert(k.clone(), v.clone()),
-// // //                 }
-// // //
-// // //                 let mut new_control = BTreeArray::new();
-// // //                 for v in control.iter() {
-// // //                     // if k < &key {
-// // //                     //     new_control.insert(k.clone(), v.clone());
-// // //                     // }
-// // //                     if k <= &key {
-// // //                         new_control.insert(k.clone(), v.clone());
-// // //                     }
-// // //                 }
-// // //                 control = new_control;
-// // //             }
-// // //             192...255 => {
-// // //                 let key = Value::int((b & 0b0011_1111) as i64);
-// // //                 let (_, r) = m.split(&key);
-// // //                 println!("{:?}", m);
-// // //                 println!("split-r {:?}", b & 0b0011_1111);
-// // //                 println!("splitr: (_, {:?}, {:?})", r);
-// // //
-// // //                 // m = r;
-// // //                 match k {
-// // //                     None => m = r,
-// // //                     Some(v) => m = r.insert(k.clone(), v.clone()),
-// // //                 }
-// // //
-// // //                 let mut new_control = BTreeArray::new();
-// // //                 for v in control.iter() {
-// // //                     if k >= &key {
-// // //                         new_control.insert(k.clone(), v.clone());
-// // //                     }
-// // //                     // if k > &key {
-// // //                     //     new_control.insert(k.clone(), v.clone());
-// // //                     // }
-// // //                 }
-// // //                 control = new_control;
-// // //             }
-// // //         }
-// // //     }
-// // //
-// // //     let mut out = vec![];
-// // //     map_to_vec(&m, &mut out);
-// // //     let out_control: Vec<(Value, Foo)> = control.into_iter().collect();
-// // //
-// // //     if out != out_control {
-// // //         println!("{:?}", "-----");
-// // //         println!("{:?}", out_control);
-// // //         println!("{:?}", out);
-// // //     }
-// // //
-// // //     assert!(out == out_control);
-// // // }
-// //
-// // fn fuzzy_cursor(data: &[u8]) {
-// //     let mut control = BTreeArray::new();
-// //     let mut m = Array::new();
-// //     let half = data.len() / 2;
-// //
-// //     for b in &data[..half] {
-// //         match *b {
-// //             0...63 => {
-// //                 m = m.insert(Value::int((b & 0b0011_1111) as i64), Foo);
-// //                 control.insert(Value::int((b & 0b0011_1111) as i64), Foo);
-// //             }
-// //             64...127 => {
-// //                 m = m.remove(&Value::int((b & 0b0011_1111) as i64));
-// //                 control.remove(&Value::int((b & 0b0011_1111) as i64));
-// //             }
-// //             128...191 => {
-// //                 let key = Value::int((b & 0b0011_1111) as i64);
-// //                 let (l, _) = m.split(&key);
-// //
-// //                 match k {
-// //                     None => m = l,
-// //                     Some(v) => m = l.insert(k.clone(), v.clone()),
-// //                 }
-// //
-// //                 let mut new_control = BTreeArray::new();
-// //                 for v in control.iter() {
-// //                     if k <= &key {
-// //                         new_control.insert(k.clone(), v.clone());
-// //                     }
-// //                 }
-// //                 control = new_control;
-// //             }
-// //             192...255 => {
-// //                 let key = Value::int((b & 0b0011_1111) as i64);
-// //                 let (_, r) = m.split(&key);
-// //
-// //                 match k {
-// //                     None => m = r,
-// //                     Some(v) => m = r.insert(k.clone(), v.clone()),
-// //                 }
-// //
-// //                 let mut new_control = BTreeArray::new();
-// //                 for v in control.iter() {
-// //                     if k >= &key {
-// //                         new_control.insert(k.clone(), v.clone());
-// //                     }
-// //                 }
-// //                 control = new_control;
-// //             }
-// //         }
-// //     }
-// //
-// //     let out_control: Vec<(Value, Foo)> = control.into_iter().collect();
-// //     let len = out_control.len();
-// //     if len == 0 {
-// //         return;
-// //     } else {
-// //         let (mut cursor, mut control_index) = if data[0] % 2 == 0 {
-// //             (m.cursor_min().unwrap(), 0)
-// //         } else {
-// //             (m.cursor_max().unwrap(), len - 1)
-// //         };
-// //         let mut skip = false;
-// //
-// //         println!("Initial: ({:?}, {:?})\n===", out_control, control_index);
-// //
-// //         for b in &data[half..] {
-// //             println!("control_index: {:?}", control_index);
-// //             println!("{:?}", cursor);
-// //             println!("---");
-// //             if skip {
-// //                 assert!(control_index == len || control_index == 0)
-// //             } else {
-// //                 match cursor.current() {
-// //                     None => assert!(control_index == len),
-// //                     Some(v) => assert!(v == out_control[control_index]),
-// //                 }
-// //             }
-// //
-// //             if b % 2 == 0 {
-// //                 skip = !cursor.next();
-// //                 if control_index != len {
-// //                     control_index += 1;
-// //                 }
-// //             } else {
-// //                 skip = !cursor.prev();
-// //                 if control_index != 0 {
-// //                     control_index -= 1;
-// //                 }
-// //             }
-// //         }
-// //     }
-// // }
-// //
-// // fn fuzzy_bulk(data: &[u8]) {
-// //     let mut control = BTreeArray::new();
-// //     let mut control2 = BTreeArray::new();
-// //     let mut m = Array::new();
-// //     let mut n = Array::new();
-// //     let half = data.len() / 2;
-// //
-// //     if data.len() == 0 {
-// //         return;
-// //     }
-// //
-// //     for b in &data[..half] {
-// //         match *b {
-// //             0...127 => {
-// //                 m = m.insert(Value::int((b & 0b0111_1111) as i64), Foo);
-// //                 control.insert(Value::int((b & 0b0111_1111) as i64), Foo);
-// //             }
-// //             128...255 => {
-// //                 m = m.remove(&Value::int((b & 0b0111_1111) as i64));
-// //                 control.remove(&Value::int((b & 0b0111_1111) as i64));
-// //             }
-// //         }
-// //     }
-// //
-// //     for b in &data[half..] {
-// //         match *b {
-// //             0...127 => {
-// //                 n = n.insert(Value::int((b & 0b0111_1111) as i64), Foo);
-// //                 control2.insert(Value::int((b & 0b0111_1111) as i64), Foo);
-// //             }
-// //             128...255 => {
-// //                 n = n.remove(&Value::int((b & 0b0111_1111) as i64));
-// //                 control2.remove(&Value::int((b & 0b0111_1111) as i64));
-// //             }
-// //         }
-// //     }
-// //
-// //     let mut out = vec![];
-// //     let out_control: Vec<(Value, Foo)>;
-// //
-// //     match data[0] {
-// //         _ => {
-// //             let union_ = m.union(&n);
-// //             map_to_vec(&union_, &mut out);
-// //
-// //             let mut tmp = control2.clone();
-// //             for v in control.into_iter() {
-// //                 tmp.insertv;
-// //             }
-// //             out_control = tmp.into_iter().collect();
-// //         }
-// //     }
-// //
-// //     if out != out_control {
-// //         println!("{:?}", out_control);
-// //         println!("{:?}", out);
-// //     }
-// //
-// //     assert!(out == out_control);
-// // }
-// //
-// // // #[test]
-// // // fn test_fuzzy_bulk() {
-// // //     fuzzy_bulk(&[0, 0, 0, 1]);
-// // // }
-// // //
-// // // #[test]
-// // // fn test_fuzzy_cursor() {
-// // //     fuzzy_cursor(&[0x1f,0x0,0x1,0x32,0x0,0x1d,0xff,0xff]);
-// // //     fuzzy(&[0x10,0x1,0x0,0x23]);
-// // //     fuzzy(&[0xca,0x31,0xd1,0x0,0x6b]);
-// // //     fuzzy(&[0x3b,0x1,0x0,0x1,0x10]);
-// // //     fuzzy(&[0x2a,0x2d,0xa,0x1,0x0,0x80]);
-// // //     fuzzy(&[0x1,0xa,0xa]);
-// // // }
+impl<V: PartialEq + Clone + Trace + 'static> Eq for Array<V> {}
 
+impl<V: PartialOrd + Clone + Trace + 'static> PartialOrd for Array<V> {
+    fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
+        match (&self.0, &rhs.0) {
+            (None, None) => return Some(Ordering::Equal),
+            (Some(_), None) => return Some(Ordering::Greater),
+            (None, Some(_)) => return Some(Ordering::Less),
+            (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return Some(Ordering::Equal),
+            _ => {}
+        };
 
+        let mut p1 = Focus::new(self, 0);
+        let mut p2 = Focus::new(rhs, 0);
+
+        loop {
+            match (p1.get_relative(0), p2.get_relative(0)) {
+                (None, None) => return Some(Ordering::Equal),
+                (Some(_), None) => return Some(Ordering::Greater),
+                (None, Some(_)) => return Some(Ordering::Less),
+                (Some(xv), Some(yv)) => {
+                    match xv.partial_cmp(&yv) {
+                        None => return None,
+                        Some(Ordering::Less) => return Some(Ordering::Less),
+                        Some(Ordering::Greater) => return Some(Ordering::Greater),
+                        Some(Ordering::Equal) => {
+                            p1.refocus(1);
+                            p2.refocus(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn lt(&self, rhs: &Self) -> bool {
+        match (&self.0, &rhs.0) {
+            (None, None) => return false,
+            (Some(_), None) => return false,
+            (None, Some(_)) => return true,
+            (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return false,
+            _ => {}
+        };
+
+        let mut p1 = Focus::new(self, 0);
+        let mut p2 = Focus::new(rhs, 0);
+
+        loop {
+            match (p1.get_relative(0), p2.get_relative(0)) {
+                (None, None) => return false,
+                (Some(_), None) => return false,
+                (None, Some(_)) => return true,
+                (Some(xv), Some(yv)) => {
+                    match xv.partial_cmp(&yv) {
+                        None => return false,
+                        Some(Ordering::Less) => return true,
+                        Some(Ordering::Greater) => return false,
+                        Some(Ordering::Equal) => {
+                            p1.refocus(1);
+                            p2.refocus(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn le(&self, rhs: &Self) -> bool {
+        match (&self.0, &rhs.0) {
+            (None, None) => return true,
+            (Some(_), None) => return false,
+            (None, Some(_)) => return true,
+            (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return true,
+            _ => {}
+        };
+
+        let mut p1 = Focus::new(self, 0);
+        let mut p2 = Focus::new(rhs, 0);
+
+        loop {
+            match (p1.get_relative(0), p2.get_relative(0)) {
+                (None, None) => return true,
+                (Some(_), None) => return false,
+                (None, Some(_)) => return true,
+                (Some(xv), Some(yv)) => {
+                    match xv.partial_cmp(&yv) {
+                        None => return false,
+                        Some(Ordering::Less) => return true,
+                        Some(Ordering::Greater) => return false,
+                        Some(Ordering::Equal) => {
+                            p1.refocus(1);
+                            p2.refocus(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn ge(&self, rhs: &Self) -> bool {
+        match (&self.0, &rhs.0) {
+            (None, None) => return true,
+            (Some(_), None) => return true,
+            (None, Some(_)) => return false,
+            (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return true,
+            _ => {}
+        };
+
+        let mut p1 = Focus::new(self, 0);
+        let mut p2 = Focus::new(rhs, 0);
+
+        loop {
+            match (p1.get_relative(0), p2.get_relative(0)) {
+                (None, None) => return true,
+                (Some(_), None) => return true,
+                (None, Some(_)) => return false,
+                (Some(xv), Some(yv)) => {
+                    match xv.partial_cmp(&yv) {
+                        None => return false,
+                        Some(Ordering::Less) => return false,
+                        Some(Ordering::Greater) => return true,
+                        Some(Ordering::Equal) => {
+                            p1.refocus(1);
+                            p2.refocus(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn gt(&self, rhs: &Self) -> bool {
+        match (&self.0, &rhs.0) {
+            (None, None) => return false,
+            (Some(_), None) => return true,
+            (None, Some(_)) => return false,
+            (Some(n1), Some(n2)) if Gc::ptr_eq(n1, n2) => return false,
+            _ => {}
+        };
+
+        let mut p1 = Focus::new(self, 0);
+        let mut p2 = Focus::new(rhs, 0);
+
+        loop {
+            match (p1.get_relative(0), p2.get_relative(0)) {
+                (None, None) => return false,
+                (Some(_), None) => return true,
+                (None, Some(_)) => return false,
+                (Some(xv), Some(yv)) => {
+                    match xv.partial_cmp(&yv) {
+                        None => return false,
+                        Some(Ordering::Less) => return false,
+                        Some(Ordering::Greater) => return true,
+                        Some(Ordering::Equal) => {
+                            p1.refocus(1);
+                            p2.refocus(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<V: Ord + Clone + Trace + 'static> Ord for Array<V> {
+    fn cmp(&self, rhs: &Self) -> Ordering {
+        self.partial_cmp(rhs).unwrap()
+    }
+}
+
+#[derive(Debug)]
+pub struct Focus<V: Trace + 'static>(Vec<(Array<V>, u8)>);
+
+impl<V: Trace + Clone +  'static> Focus<V> {
+    pub fn new(arr: &Array<V>, p: usize) -> Self {
+        let mut v = vec![];
+        focus_new(arr, p, &mut v);
+        Self(v)
+    }
+
+    pub fn get_relative(&self, i: isize) -> Option<&V> {
+        let mut h = self.0.len();
+        let mut subarr_p = 0;
+
+        while h > 0 {
+            let (arr, node_position) = &self.0[h - 1];
+            subarr_p = subarr_position(arr, *node_position, subarr_p);
+
+            let subarr_i = (subarr_p as isize) + i;
+            if 0 <= subarr_i && subarr_i < (arr.count() as isize) {
+                return Some(arr.get(subarr_i as usize));
+            } else {
+                h -= 1;
+            }
+        }
+
+        return None;
+    }
+
+    pub fn refocus(&mut self, by: isize) -> isize {
+        if self.0.is_empty() {
+            return 0;
+        }
+
+        let mut subarr_p = 0;
+
+        loop {
+            let (arr, node_position) = &self.0.pop().unwrap();
+            subarr_p = subarr_position(arr, *node_position, subarr_p);
+
+            let subarr_i = (subarr_p as isize) + by;
+            if 0 <= subarr_i && subarr_i < (arr.count() as isize) {
+                focus_new(arr, subarr_i as usize, &mut self.0);
+                return by;
+            }
+
+            if self.0.is_empty() {
+                if by <= 0 {
+                    focus_new(arr, 0, &mut self.0);
+                    return -(subarr_p as isize);
+                } else {
+                    focus_new(arr, arr.count(), &mut self.0);
+                    return (self.0[0].0.count() - subarr_p) as isize;
+                }
+            }
+        }
+    }
+
+    // fn next(&mut self) -> Option<&V> {
+    //     let r = self.get_relative(0);
+    //     let tmp = r.clone();
+    //     self.refocus(1);
+    //     tmp
+    // }
+}
+
+fn focus_new<V: Trace + Clone + 'static>(arr: &Array<V>, p: usize, vs: &mut Vec<(Array<V>, u8)>) {
+    match &arr.0 {
+        None => return,
+        Some(n) => match n.borrow() {
+            N2([(l, _)], r, _) => match p.cmp(&l.count()) {
+                Less => {
+                    vs.push((arr.clone(), 0));
+                    focus_new(l, p, vs)
+                }
+                Equal => vs.push((arr.clone(), 1)),
+                Greater => {
+                    vs.push((arr.clone(), 2));
+                    focus_new(r, p - (l.count() + 1), vs)
+                }
+            }
+            N3([(l, _), (m, _)], r, _) => match p.cmp(&l.count()) {
+                Less => {
+                    vs.push((arr.clone(), 0));
+                    focus_new(l, p, vs)
+                }
+                Equal => vs.push((arr.clone(), 1)),
+                Greater => match (p - (l.count() + 1)).cmp(&m.count()) {
+                    Less => {
+                        vs.push((arr.clone(), 2));
+                        focus_new(r, p - (l.count() + 1), vs)
+                    }
+                    Equal => vs.push((arr.clone(), 3)),
+                    Greater => {
+                        vs.push((arr.clone(), 4));
+                        focus_new(r, p - (l.count() + 1 + m.count() + 1), vs)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn subarr_position<V: Trace + Clone + 'static>(arr: &Array<V>, node_position: u8, prev: usize) -> usize {
+    match &arr.0 {
+        None => return 0,
+        Some(n) => match n.borrow() {
+            N2([(l, _)], _, _) => match node_position {
+                0 => prev,
+                1 => l.count(),
+                2 => l.count() + 1 + prev,
+                _ => unreachable!(),
+            }
+            N3([(l, _), (m, _)], _, _) => match node_position {
+                0 => prev,
+                1 => l.count(),
+                2 => l.count() + 1 + prev,
+                3 => l.count() + 1 + m.count(),
+                4 => l.count() + 1 + m.count() + 1 + prev,
+                _ => unreachable!(),
+            }
+        }
+    }
+}
 
 
 
@@ -1050,6 +746,8 @@ fn n3_handle_insert_r<'a, V>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::cmp;
 
     use proptest::prelude::*;
     use proptest_derive::Arbitrary;
@@ -1114,6 +812,57 @@ mod tests {
             ])
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum FocusConstruction {
+        New(ArrayConstruction, usize),
+    }
+
+    impl FocusConstruction {
+        fn construct_focus(&self) -> Focus<u32> {
+            match self {
+                Self::New(c, p) => {
+                    let arr = c.construct_array();
+                    Focus::new(&arr, p % (arr.count() + 1))
+                }
+            }
+        }
+
+        fn construct_control(&self) -> (Vector<u32>, usize) {
+            match self {
+                Self::New(c, p) => {
+                    let control = c.construct_control();
+                    let p = p % (control.len() + 1);
+                    (control, p)
+                }
+            }
+        }
+    }
+
+    fn arb_focus_construction() -> impl Strategy<Value = FocusConstruction> {
+        let leaf = (arb_array_construction(), any::<usize>()).prop_map(|(a, i)| FocusConstruction::New(a, i));
+        leaf
+    }
+
+    fn control_get_relative(control: &(Vector<u32>, usize), i: isize) -> Option<&u32> {
+        let tmp = (control.1 as isize) + i;
+        if tmp < 0 {
+            None
+        } else {
+            control.0.get(tmp as usize)
+        }
+    }
+
+    fn control_refocus(control: &(Vector<u32>, usize), by: isize) -> ((Vector<u32>, usize), isize) {
+        let control_index = if by >= 0 {
+            cmp::min(control.0.len() as isize, (control.1 as isize) + by) as usize
+        } else {
+            cmp::max(0, (control.1 as isize) + by) as usize
+        };
+        let moved = (control_index as isize) - (control.1 as isize);
+
+        ((control.0.clone(), control_index), moved)
+    }
+
     proptest! {
         #[test]
         fn test_count(c in arb_array_construction()) {
@@ -1124,6 +873,133 @@ mod tests {
                 println!("----------------\ncount was {:?} rather than {:?}\nExpected: {:?}\n\n{:?}\n\n\n", arr.count(), control.len(), control, arr);
                 panic!()
             }
+        }
+
+        #[test]
+        fn test_get(c in arb_array_construction(), i in any::<usize>()) {
+            let arr = c.construct_array();
+            let control = c.construct_control();
+            if control.len() > 0 {
+                let i = i % control.len();
+
+                let a = arr.get(i);
+                let b = control.get(i).unwrap();
+
+                if a != b {
+                    println!("----------------\ngot {:?} rather than {:?} at index {:?}\nExpected: {:?}\n\n{:?}\n\n\n", arr.count(), control.len(), i, control, arr);
+                    panic!()
+                }
+            }
+        }
+
+        #[test]
+        fn test_focus(c in arb_focus_construction(), i in any::<isize>()) {
+            let focus = c.construct_focus();
+            let control = c.construct_control();
+            if control.0.len() > 0 {
+                let i = i % ((control.0.len() + 1) as isize);
+
+                let a = focus.get_relative(i);
+                let b = control_get_relative(&control, i);
+
+                if a != b {
+                    println!("----------------\ngot {:?} rather than {:?} at index {:?}\nControl: {:?}\n\n{:?}\n\n\n", a, b, i, control, focus);
+                    panic!()
+                }
+            }
+        }
+
+        #[test]
+        fn test_refocus(c in arb_focus_construction(), i in any::<isize>(), by in any::<isize>(), by2 in any::<isize>()) {
+            let mut focus = c.construct_focus();
+            let control = c.construct_control();
+            let initial_position = control.1;
+            if control.0.len() > 0 {
+                let i = i % ((control.0.len() + 1) as isize);
+
+                let moved = focus.refocus(by);
+                let (control, control_moved) = control_refocus(&control, by);
+
+                if moved != control_moved {
+                    println!("
+Invalid first refocus:
+expected move: {:?}, actual: {:?}
+control focus: {:?}
+actual focus: {:?}
+refocus by: {:?}, starting at {:?}
+
+
+", control_moved, moved, control, focus, by, initial_position);
+                    panic!();
+                }
+
+                let a = focus.get_relative(i);
+                let b = control_get_relative(&control, i);
+
+                if a != b {
+                    println!("
+Invalid first relative get:
+expected {:?}, actual {:?}
+at index {:?} relative to {:?}
+control focus: {:?}
+actual focus: {:?}
+refocus by: {:?}, starting at {:?}", b, a, i, control.1, control, focus, by, initial_position);
+
+
+                    panic!();
+                }
+
+                let moved2 = focus.refocus(by2);
+                let (control, control_moved2) = control_refocus(&control, by2);
+
+                if moved2 != control_moved2 {
+                    println!("
+Invalid second refocus:
+expected move: {:?}, actual: {:?}
+control focus: {:?}
+actual focus: {:?}
+refocus by: {:?}
+previously: refocus by {:?}, starting at {:?}, moving by {:?}
+
+
+", control_moved2, moved2, control, focus, by2, by, initial_position, moved);
+                    panic!();
+                }
+
+                let a = focus.get_relative(i);
+                let b = control_get_relative(&control, i);
+
+                if a != b {
+                    println!("
+Invalid second relative get:
+expected {:?}, actual {:?}
+at index {:?} relative to {:?}
+control focus: {:?}
+actual focus: {:?}
+refocus by: {:?} then {:?}, starting at {:?}", b, a, i, control.1, control, focus, by, by2, initial_position);
+
+
+                    panic!();
+                }
+            }
+        }
+
+        #[test]
+        fn test_cmp(c in arb_array_construction(), d in arb_array_construction()) {
+            let arr = c.construct_array();
+            let control = c.construct_control();
+
+            let arr2 = d.construct_array();
+            let control2 = d.construct_control();
+
+            assert_eq!(arr == arr2, control == control2);
+            assert_eq!(arr != arr2, control != control2);
+            assert_eq!(arr < arr2, control < control2);
+            assert_eq!(arr <= arr2, control <= control2);
+            assert_eq!(arr >= arr2, control >= control2);
+            assert_eq!(arr > arr2, control > control2);
+            assert_eq!(arr.partial_cmp(&arr2), control.partial_cmp(&control2));
+            assert_eq!(arr.cmp(&arr2), control.cmp(&control2));
         }
     }
 }

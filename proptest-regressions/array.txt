@@ -8,3 +8,11 @@ cc a5244be38acda17d408a4c778d999bbbd93e44acb70d7812a676eeaeb2f3c026 # shrinks to
 cc 4a30a2efa2c645db226a468fe38d856fd186ddb5185ec407ae682165c8d7e98c # shrinks to c = New, i = 0
 cc 7312846d07677b0561ef79fce17cd347a24247967b8ea82619f232b0786d2db4 # shrinks to c = Concat(Concat(Singleton(0), Concat(Singleton(0), Singleton(0))), Concat(Singleton(0), Singleton(0))), i = 14735656264866887684
 cc bafa956f018842ce29c2f3b62fc49d6977736a36c99def04adb8cb9cb06bdb79 # shrinks to c = New(Concat(New, Singleton(0)), 0), i = 0, by = 1
+cc c5eb2c7f5bb9ecb0db60b26d4a3844b63a4e5f670a0aa6431ae3f2a113e146bc # shrinks to c = New(Remove(Insert(Singleton(0), 0, 0), 2680112943071516975), 0), i = 0
+cc 380b54b0f1d38ed7c2ee30590f6d4ae9457ad084a688a77bd62dbba22da7bbf3 # shrinks to c = Remove(Insert(Singleton(0), 0, 0), 5210003892357934897)
+cc c5b44e632555a4dd14aa30dfb0164eefae6ed16235e2b5263a623505d67831ba # shrinks to c = Remove(Insert(Singleton(0), 0, 0), 201626151517942681), i = 0
+cc 438b9d6a3beac6fb88f276d6d84a62924b59ccb796a298d0fdb54ce87d890457 # shrinks to c = New, d = Remove(Concat(Singleton(0), Singleton(0)), 2829429619199595913)
+cc b589f6b0ce526dc0925def803c8e65d66c27657399f0329c476783534bf84e30 # shrinks to c = Slice(Singleton(0), 0, 2330593895558945729)
+cc c1023cf841fd9df3802a38de78318a082deca9b6e58b0cb548623aa4c33fe1b6 # shrinks to c = New(Slice(Insert(Singleton(0), 0, 0), 2344913523464553999, 1010530811128113448), 0), i = 0
+cc 0e984d5288b0915665d5474b970568ff6b09a2410428ad56395cfda42a4c9a5b # shrinks to c = Concat(New, Slice(Singleton(0), 9194760148550865696, 4096176279164040025)), i = 0
+cc 16fdd0a0ffffcce009255793741a95eed0e32189f42b5f491f37f0458defb9f0 # shrinks to c = New(Slice(Singleton(0), 7558323091789715372, 12146645454646441915), 5497595414514766464), i = 15125995444298684

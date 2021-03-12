@@ -114,19 +114,20 @@ impl<V: Clone + Trace + 'static> Array<V> {
     /// Time complexity: O(log(n))
     pub fn remove(&self, i: usize) -> Self {
         let (l, r) = self.split(i);
-        let (_, r) = r.split(i + 1);
+        let (_, r) = r.split(1);
         l.concat(&r)
     }
 
     /// Time complexity: O(log(n))
     pub fn update(&self, i: usize, v: V) -> Self {
         let (l, r) = self.split(i);
-        let (_, r) = r.split(i + 1);
+        let (_, r) = r.split(1);
         l.concat(&Self::singleton(v)).concat(&r)
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Self {
-        self.slice_to(start).slice_from(end - start)
+        let (l, _) = self.split(end);
+        l.split(start).1
     }
 
     pub fn slice_to(&self, p: usize) -> Self {
@@ -668,13 +669,6 @@ impl<V: Trace + Clone +  'static> Focus<V> {
             }
         }
     }
-
-    // fn next(&mut self) -> Option<&V> {
-    //     let r = self.get_relative(0);
-    //     let tmp = r.clone();
-    //     self.refocus(1);
-    //     tmp
-    // }
 }
 
 fn focus_new<V: Trace + Clone + 'static>(arr: &Array<V>, p: usize, vs: &mut Vec<(Array<V>, u8)>) {
@@ -736,12 +730,48 @@ fn subarr_position<V: Trace + Clone + 'static>(arr: &Array<V>, node_position: u8
     }
 }
 
+pub struct Builder<V>(Vec<V>);
 
+impl<V: Trace + Clone + 'static> Builder<V> {
+    pub fn new() -> Self {
+        Builder(Vec::new())
+    }
 
+    pub fn push(&mut self, v: V) {
+        self.0.push(v)
+    }
 
+    pub fn build(&self) -> Array<V> {
+        do_build(&self.0[..])
+    }
+}
 
-
-
+fn do_build<V: Trace + Clone + 'static>(vs: &[V]) -> Array<V> {
+    let l = vs.len();
+    if l == 0 {
+        Array::new()
+    } else if l == 1 {
+        Array::singleton(vs[0].clone())
+    } else if (l - 2) % 3 == 0 {
+        let recursive_length = (l - 2) / 3;
+        n3(
+            do_build(&vs[..recursive_length]),
+            /**/ vs[recursive_length].clone(),
+            do_build(&vs[recursive_length + 1..(recursive_length * 2) + 1]),
+            /**/ vs[(recursive_length * 2) + 1].clone(),
+            do_build(&vs[(recursive_length * 2) + 2..])
+        )
+    } else if (l - 1) % 2 == 0 {
+        let recursive_length = (l - 1) / 2;
+        n2(
+            do_build(&vs[..recursive_length]),
+            /**/ vs[recursive_length].clone(),
+            do_build(&vs[recursive_length + 1..]),
+        )
+    } else {
+        do_build(&vs[1..]).insert(0, vs[0].clone())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -750,48 +780,147 @@ mod tests {
     use std::cmp;
 
     use proptest::prelude::*;
-    use proptest_derive::Arbitrary;
     use im::Vector;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum ArrayConstruction {
         New,
-        Singleton(u32),
-        Insert(Box<Self>, u32),
+        Singleton(u8),
+        Insert(Box<Self>, usize, u8),
         Remove(Box<Self>, usize),
-        Update(Box<Self>, usize, u32),
+        Update(Box<Self>, usize, u8),
         Slice(Box<Self>, usize, usize),
         SliceTo(Box<Self>, usize),
         SliceFrom(Box<Self>, usize),
         Splice(Box<Self>, usize, Box<Self>),
-        Split(Box<Self>, usize),
+        SplitLeft(Box<Self>, usize),
+        SplitRight(Box<Self>, usize),
         Concat(Box<Self>, Box<Self>),
+        Builder(Vec<u8>),
     }
 
     impl ArrayConstruction {
-        fn concat(a: Self, b: Self) -> Self {
-            Self::Concat(Box::new(a), Box::new(b))
-        }
-
-        fn construct_array(&self) -> Array<u32> {
+        fn construct_array(&self) -> Array<u8> {
             match self {
                 Self::New => Array::new(),
                 Self::Singleton(v) => Array::singleton(*v),
+                Self::Insert(a, i, v) => {
+                    let a = Self::construct_array(a);
+                    let i = if a.count() == 0 { 0 } else { *i % a.count() };
+                    a.insert(i, *v)
+                }
+                Self::Remove(a, i) => {
+                    let a = Self::construct_array(a);
+                    let i = if a.count() == 0 { return Array::new() } else { *i % a.count() };
+                    a.remove(i)
+                }
+                Self::Update(a, i, v) => {
+                    let a = Self::construct_array(a);
+                    let i = if a.count() == 0 { return Array::new() } else { *i % a.count() };
+                    a.update(i, *v)
+                }
+                Self::Slice(a, p1, p2) => {
+                    let a = Self::construct_array(a);
+                    let p1 = *p1 % (a.count() + 1);
+                    let p2 = *p2 % (a.count() + 1);
+                    let p2 = cmp::max(p1, p2);
+                    a.slice(p1, p2)
+                }
+                Self::SliceTo(a, p) => {
+                    let a = Self::construct_array(a);
+                    let p = *p % (a.count() + 1);
+                    a.slice_to(p)
+                }
+                Self::SliceFrom(a, p) => {
+                    let a = Self::construct_array(a);
+                    let p = *p % (a.count() + 1);
+                    a.slice_from(p)
+                }
+                Self::SplitLeft(a, p) => {
+                    let a = Self::construct_array(a);
+                    let p = *p % (a.count() + 1);
+                    a.split(p).0
+                }
+                Self::SplitRight(a, p) => {
+                    let a = Self::construct_array(a);
+                    let p = *p % (a.count() + 1);
+                    a.split(p).1
+                }
+                Self::Splice(a, p, b) => {
+                    let a = Self::construct_array(a);
+                    let p = *p % (a.count() + 1);
+                    let b = Self::construct_array(b);
+                    a.splice(p, &b)
+                }
                 Self::Concat(a, b) => Self::construct_array(a).concat(&Self::construct_array(b)),
-                _ => unimplemented!(),
+                Self::Builder(vs) => Builder(vs.clone()).build(),
             }
         }
 
-        fn construct_control(&self) -> Vector<u32> {
+        fn construct_control(&self) -> Vector<u8> {
             match self {
                 Self::New => Vector::new(),
                 Self::Singleton(v) => Vector::unit(*v),
+                Self::Insert(a, i, v) => {
+                    let mut a = Self::construct_control(a);
+                    let i = if a.len() == 0 { 0 } else { *i % a.len() };
+                    a.insert(i, *v);
+                    a
+                }
+                Self::Remove(a, i) => {
+                    let mut a = Self::construct_control(a);
+                    let i = if a.len() == 0 { return Vector::new() } else { *i % a.len() };
+                    a.remove(i);
+                    a
+                }
+                Self::Update(a, i, v) => {
+                    let mut a = Self::construct_control(a);
+                    let i = if a.len() == 0 { return Vector::new() } else { *i % a.len() };
+                    a.set(i, *v);
+                    a
+                }
+                Self::Slice(a, p1, p2) => {
+                    let mut a = Self::construct_control(a);
+                    let p1 = *p1 % (a.len() + 1);
+                    let p2 = *p2 % (a.len() + 1);
+                    let p2 = cmp::max(p1, p2);
+                    a.slice(p1..p2)
+                }
+                Self::SliceTo(a, p) => {
+                    let mut a = Self::construct_control(a);
+                    let p = *p % (a.len() + 1);
+                    a.slice(..p)
+                }
+                Self::SliceFrom(a, p) => {
+                    let mut a = Self::construct_control(a);
+                    let p = *p % (a.len() + 1);
+                    a.slice(p..)
+                }
+                Self::SplitLeft(a, p) => {
+                    let a = Self::construct_control(a);
+                    let p = *p % (a.len() + 1);
+                    a.split_at(p).0
+                }
+                Self::SplitRight(a, p) => {
+                    let a = Self::construct_control(a);
+                    let p = *p % (a.len() + 1);
+                    a.split_at(p).1
+                }
+                Self::Splice(a, p, b) => {
+                    let a = Self::construct_control(a);
+                    let p = *p % (a.len() + 1);
+                    let b = Self::construct_control(b);
+                    let (mut c, d) = a.split_at(p);
+                    c.append(b);
+                    c.append(d);
+                    c
+                }
                 Self::Concat(a, b) => {
                     let mut r = Self::construct_control(a);
                     r.append(Self::construct_control(b));
                     r
                 }
-                _ => unimplemented!(),
+                Self::Builder(vs) => vs.clone().into_iter().collect(),
             }
         }
     }
@@ -799,16 +928,24 @@ mod tests {
     fn arb_array_construction() -> impl Strategy<Value = ArrayConstruction> {
         let leaf = prop_oneof![
             Just(ArrayConstruction::New),
-            any::<u32>().prop_map(ArrayConstruction::Singleton),
+            any::<u8>().prop_map(ArrayConstruction::Singleton),
         ];
         // leaf
         leaf.prop_recursive(
-            16, // 8 levels deep
+            32, // 8 levels deep
             128, // Shoot for maximum size of 256 nodes
             10, // We put up to 10 items per collection
             |inner| prop_oneof![
-                // (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::Split(Box::new(a), p /* TODO modulo count + 1 */)),
-                (inner.clone(), inner).prop_map(|(a, b)| ArrayConstruction::concat(a, b)),
+                (inner.clone(), any::<usize>(), any::<u8>()).prop_map(|(a, i, v)| ArrayConstruction::Insert(Box::new(a), i, v)),
+                (inner.clone(), any::<usize>()).prop_map(|(a, i)| ArrayConstruction::Remove(Box::new(a), i)),
+                (inner.clone(), any::<usize>(), any::<u8>()).prop_map(|(a, i, v)| ArrayConstruction::Update(Box::new(a), i, v)),
+                (inner.clone(), any::<usize>(), any::<usize>()).prop_map(|(a, p1, p2)| ArrayConstruction::Slice(Box::new(a), p1, p2)),
+                (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::SliceTo(Box::new(a), p)),
+                (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::SliceFrom(Box::new(a), p)),
+                (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::SplitLeft(Box::new(a), p)),
+                (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::SplitRight(Box::new(a), p)),
+                (inner.clone(), any::<usize>(), inner.clone()).prop_map(|(a, p, b)| ArrayConstruction::Splice(Box::new(a), p, Box::new(b))),
+                (inner.clone(), inner).prop_map(|(a, b)| ArrayConstruction::Concat(Box::new(a), Box::new(b))),
             ])
     }
 
@@ -818,7 +955,7 @@ mod tests {
     }
 
     impl FocusConstruction {
-        fn construct_focus(&self) -> Focus<u32> {
+        fn construct_focus(&self) -> Focus<u8> {
             match self {
                 Self::New(c, p) => {
                     let arr = c.construct_array();
@@ -827,7 +964,7 @@ mod tests {
             }
         }
 
-        fn construct_control(&self) -> (Vector<u32>, usize) {
+        fn construct_control(&self) -> (Vector<u8>, usize) {
             match self {
                 Self::New(c, p) => {
                     let control = c.construct_control();
@@ -843,7 +980,7 @@ mod tests {
         leaf
     }
 
-    fn control_get_relative(control: &(Vector<u32>, usize), i: isize) -> Option<&u32> {
+    fn control_get_relative(control: &(Vector<u8>, usize), i: isize) -> Option<&u8> {
         let tmp = (control.1 as isize) + i;
         if tmp < 0 {
             None
@@ -852,7 +989,7 @@ mod tests {
         }
     }
 
-    fn control_refocus(control: &(Vector<u32>, usize), by: isize) -> ((Vector<u32>, usize), isize) {
+    fn control_refocus(control: &(Vector<u8>, usize), by: isize) -> ((Vector<u8>, usize), isize) {
         let control_index = if by >= 0 {
             cmp::min(control.0.len() as isize, (control.1 as isize) + by) as usize
         } else {
@@ -1000,6 +1137,28 @@ refocus by: {:?} then {:?}, starting at {:?}", b, a, i, control.1, control, focu
             assert_eq!(arr > arr2, control > control2);
             assert_eq!(arr.partial_cmp(&arr2), control.partial_cmp(&control2));
             assert_eq!(arr.cmp(&arr2), control.cmp(&control2));
+        }
+    }
+
+    #[test]
+    fn test_builder() {
+        for m in 0..=32u8 {
+            let mut b = Builder::new();
+            let mut c = Array::new();
+
+            for i in 0..m {
+                b.push(i);
+                c = c.insert(i as usize, i);
+            }
+
+            let a = b.build();
+            if a != c {
+                for j in 0..m {
+                    println!("at {:?}, actual: {:?}, expected: {:?}", j, a.get(j as usize), c.get(j as usize));
+                }
+            }
+
+            assert_eq!(b.build(), c);
         }
     }
 }

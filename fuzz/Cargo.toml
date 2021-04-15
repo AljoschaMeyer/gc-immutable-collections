@@ -1,0 +1,53 @@
+
+[package]
+name = "gc-immutable-collections-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = { version = "0.4.0", features = ["arbitrary-derive"] }
+im = "15.0.0"
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.gc-immutable-collections]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_array_count"
+path = "fuzz_targets/fuzz_array_count.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_array_get"
+path = "fuzz_targets/fuzz_array_get.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_array_focus_simple"
+path = "fuzz_targets/fuzz_array_focus_simple.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_array_focus_refocus"
+path = "fuzz_targets/fuzz_array_focus_refocus.rs"
+test = false
+doc = false
+
+
+[[bin]]
+name = "fuzz_array_cmp"
+path = "fuzz_targets/fuzz_array_cmp.rs"
+test = false
+doc = false

@@ -4,7 +4,7 @@
 use std::borrow::Borrow;
 use std::cmp::Ordering::{self, *};
 
-use gc::{Gc, GcCell, Trace, Finalize, custom_trace};
+use gc::{Gc, Trace, custom_trace};
 use gc_derive::{Trace, Finalize};
 
 use crate::Find;

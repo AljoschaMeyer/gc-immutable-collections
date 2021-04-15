@@ -423,8 +423,8 @@ impl<V: PartialEq + Clone + Trace + 'static> PartialEq for Array<V> {
             _ => {}
         };
 
-        let mut p1 = Focus::new(self, 0);
-        let mut p2 = Focus::new(rhs, 0);
+        let mut p1 = ArrayFocus::new(self, 0);
+        let mut p2 = ArrayFocus::new(rhs, 0);
 
         loop {
             match (p1.get_relative(0), p2.get_relative(0)) {
@@ -454,8 +454,8 @@ impl<V: PartialOrd + Clone + Trace + 'static> PartialOrd for Array<V> {
             _ => {}
         };
 
-        let mut p1 = Focus::new(self, 0);
-        let mut p2 = Focus::new(rhs, 0);
+        let mut p1 = ArrayFocus::new(self, 0);
+        let mut p2 = ArrayFocus::new(rhs, 0);
 
         loop {
             match (p1.get_relative(0), p2.get_relative(0)) {
@@ -486,8 +486,8 @@ impl<V: PartialOrd + Clone + Trace + 'static> PartialOrd for Array<V> {
             _ => {}
         };
 
-        let mut p1 = Focus::new(self, 0);
-        let mut p2 = Focus::new(rhs, 0);
+        let mut p1 = ArrayFocus::new(self, 0);
+        let mut p2 = ArrayFocus::new(rhs, 0);
 
         loop {
             match (p1.get_relative(0), p2.get_relative(0)) {
@@ -518,8 +518,8 @@ impl<V: PartialOrd + Clone + Trace + 'static> PartialOrd for Array<V> {
             _ => {}
         };
 
-        let mut p1 = Focus::new(self, 0);
-        let mut p2 = Focus::new(rhs, 0);
+        let mut p1 = ArrayFocus::new(self, 0);
+        let mut p2 = ArrayFocus::new(rhs, 0);
 
         loop {
             match (p1.get_relative(0), p2.get_relative(0)) {
@@ -550,8 +550,8 @@ impl<V: PartialOrd + Clone + Trace + 'static> PartialOrd for Array<V> {
             _ => {}
         };
 
-        let mut p1 = Focus::new(self, 0);
-        let mut p2 = Focus::new(rhs, 0);
+        let mut p1 = ArrayFocus::new(self, 0);
+        let mut p2 = ArrayFocus::new(rhs, 0);
 
         loop {
             match (p1.get_relative(0), p2.get_relative(0)) {
@@ -582,8 +582,8 @@ impl<V: PartialOrd + Clone + Trace + 'static> PartialOrd for Array<V> {
             _ => {}
         };
 
-        let mut p1 = Focus::new(self, 0);
-        let mut p2 = Focus::new(rhs, 0);
+        let mut p1 = ArrayFocus::new(self, 0);
+        let mut p2 = ArrayFocus::new(rhs, 0);
 
         loop {
             match (p1.get_relative(0), p2.get_relative(0)) {
@@ -612,10 +612,10 @@ impl<V: Ord + Clone + Trace + 'static> Ord for Array<V> {
     }
 }
 
-#[derive(Debug)]
-pub struct Focus<V: Trace + 'static>(Vec<(Array<V>, u8)>);
+#[derive(Debug, Trace, Finalize)]
+pub struct ArrayFocus<V: Trace + 'static>(Vec<(Array<V>, u8)>);
 
-impl<V: Trace + Clone +  'static> Focus<V> {
+impl<V: Trace + Clone +  'static> ArrayFocus<V> {
     pub fn new(arr: &Array<V>, p: usize) -> Self {
         let mut v = vec![];
         focus_new(arr, p, &mut v);
@@ -652,8 +652,8 @@ impl<V: Trace + Clone +  'static> Focus<V> {
             let (arr, node_position) = &self.0.pop().unwrap();
             subarr_p = subarr_position(arr, *node_position, subarr_p);
 
-            let subarr_i = (subarr_p as isize) + by;
-            if 0 <= subarr_i && subarr_i < (arr.count() as isize) {
+            let subarr_i = (subarr_p as isize).saturating_add(by);
+            if 0 <= subarr_i && subarr_i <= (arr.count() as isize) {
                 focus_new(arr, subarr_i as usize, &mut self.0);
                 return by;
             }
@@ -695,7 +695,7 @@ fn focus_new<V: Trace + Clone + 'static>(arr: &Array<V>, p: usize, vs: &mut Vec<
                 Greater => match (p - (l.count() + 1)).cmp(&m.count()) {
                     Less => {
                         vs.push((arr.clone(), 2));
-                        focus_new(r, p - (l.count() + 1), vs)
+                        focus_new(m, p - (l.count() + 1), vs)
                     }
                     Equal => vs.push((arr.clone(), 3)),
                     Greater => {
@@ -730,19 +730,26 @@ fn subarr_position<V: Trace + Clone + 'static>(arr: &Array<V>, node_position: u8
     }
 }
 
-pub struct Builder<V>(Vec<V>);
+#[derive(Trace, Finalize)]
+pub struct ArrayBuilder<V: Trace + Clone + 'static>(Vec<V>, Vec<V>);
 
-impl<V: Trace + Clone + 'static> Builder<V> {
+impl<V: Trace + Clone + 'static> ArrayBuilder<V> {
     pub fn new() -> Self {
-        Builder(Vec::new())
+        ArrayBuilder(Vec::new(), Vec::new())
     }
 
-    pub fn push(&mut self, v: V) {
+    pub fn push_front(&mut self, v: V) {
         self.0.push(v)
     }
 
+    pub fn push_back(&mut self, v: V) {
+        self.1.push(v)
+    }
+
     pub fn build(&self) -> Array<V> {
-        do_build(&self.0[..])
+        let start = do_build_reverse(&self.0[..]);
+        let end = do_build(&self.1[..]);
+        start.concat(&end)
     }
 }
 
@@ -759,7 +766,7 @@ fn do_build<V: Trace + Clone + 'static>(vs: &[V]) -> Array<V> {
             /**/ vs[recursive_length].clone(),
             do_build(&vs[recursive_length + 1..(recursive_length * 2) + 1]),
             /**/ vs[(recursive_length * 2) + 1].clone(),
-            do_build(&vs[(recursive_length * 2) + 2..])
+            do_build(&vs[(recursive_length * 2) + 2..]),
         )
     } else if (l - 1) % 2 == 0 {
         let recursive_length = (l - 1) / 2;
@@ -773,392 +780,30 @@ fn do_build<V: Trace + Clone + 'static>(vs: &[V]) -> Array<V> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::cmp;
-
-    use proptest::prelude::*;
-    use im::Vector;
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum ArrayConstruction {
-        New,
-        Singleton(u8),
-        Insert(Box<Self>, usize, u8),
-        Remove(Box<Self>, usize),
-        Update(Box<Self>, usize, u8),
-        Slice(Box<Self>, usize, usize),
-        SliceTo(Box<Self>, usize),
-        SliceFrom(Box<Self>, usize),
-        Splice(Box<Self>, usize, Box<Self>),
-        SplitLeft(Box<Self>, usize),
-        SplitRight(Box<Self>, usize),
-        Concat(Box<Self>, Box<Self>),
-        Builder(Vec<u8>),
-    }
-
-    impl ArrayConstruction {
-        fn construct_array(&self) -> Array<u8> {
-            match self {
-                Self::New => Array::new(),
-                Self::Singleton(v) => Array::singleton(*v),
-                Self::Insert(a, i, v) => {
-                    let a = Self::construct_array(a);
-                    let i = if a.count() == 0 { 0 } else { *i % a.count() };
-                    a.insert(i, *v)
-                }
-                Self::Remove(a, i) => {
-                    let a = Self::construct_array(a);
-                    let i = if a.count() == 0 { return Array::new() } else { *i % a.count() };
-                    a.remove(i)
-                }
-                Self::Update(a, i, v) => {
-                    let a = Self::construct_array(a);
-                    let i = if a.count() == 0 { return Array::new() } else { *i % a.count() };
-                    a.update(i, *v)
-                }
-                Self::Slice(a, p1, p2) => {
-                    let a = Self::construct_array(a);
-                    let p1 = *p1 % (a.count() + 1);
-                    let p2 = *p2 % (a.count() + 1);
-                    let p2 = cmp::max(p1, p2);
-                    a.slice(p1, p2)
-                }
-                Self::SliceTo(a, p) => {
-                    let a = Self::construct_array(a);
-                    let p = *p % (a.count() + 1);
-                    a.slice_to(p)
-                }
-                Self::SliceFrom(a, p) => {
-                    let a = Self::construct_array(a);
-                    let p = *p % (a.count() + 1);
-                    a.slice_from(p)
-                }
-                Self::SplitLeft(a, p) => {
-                    let a = Self::construct_array(a);
-                    let p = *p % (a.count() + 1);
-                    a.split(p).0
-                }
-                Self::SplitRight(a, p) => {
-                    let a = Self::construct_array(a);
-                    let p = *p % (a.count() + 1);
-                    a.split(p).1
-                }
-                Self::Splice(a, p, b) => {
-                    let a = Self::construct_array(a);
-                    let p = *p % (a.count() + 1);
-                    let b = Self::construct_array(b);
-                    a.splice(p, &b)
-                }
-                Self::Concat(a, b) => Self::construct_array(a).concat(&Self::construct_array(b)),
-                Self::Builder(vs) => Builder(vs.clone()).build(),
-            }
-        }
-
-        fn construct_control(&self) -> Vector<u8> {
-            match self {
-                Self::New => Vector::new(),
-                Self::Singleton(v) => Vector::unit(*v),
-                Self::Insert(a, i, v) => {
-                    let mut a = Self::construct_control(a);
-                    let i = if a.len() == 0 { 0 } else { *i % a.len() };
-                    a.insert(i, *v);
-                    a
-                }
-                Self::Remove(a, i) => {
-                    let mut a = Self::construct_control(a);
-                    let i = if a.len() == 0 { return Vector::new() } else { *i % a.len() };
-                    a.remove(i);
-                    a
-                }
-                Self::Update(a, i, v) => {
-                    let mut a = Self::construct_control(a);
-                    let i = if a.len() == 0 { return Vector::new() } else { *i % a.len() };
-                    a.set(i, *v);
-                    a
-                }
-                Self::Slice(a, p1, p2) => {
-                    let mut a = Self::construct_control(a);
-                    let p1 = *p1 % (a.len() + 1);
-                    let p2 = *p2 % (a.len() + 1);
-                    let p2 = cmp::max(p1, p2);
-                    a.slice(p1..p2)
-                }
-                Self::SliceTo(a, p) => {
-                    let mut a = Self::construct_control(a);
-                    let p = *p % (a.len() + 1);
-                    a.slice(..p)
-                }
-                Self::SliceFrom(a, p) => {
-                    let mut a = Self::construct_control(a);
-                    let p = *p % (a.len() + 1);
-                    a.slice(p..)
-                }
-                Self::SplitLeft(a, p) => {
-                    let a = Self::construct_control(a);
-                    let p = *p % (a.len() + 1);
-                    a.split_at(p).0
-                }
-                Self::SplitRight(a, p) => {
-                    let a = Self::construct_control(a);
-                    let p = *p % (a.len() + 1);
-                    a.split_at(p).1
-                }
-                Self::Splice(a, p, b) => {
-                    let a = Self::construct_control(a);
-                    let p = *p % (a.len() + 1);
-                    let b = Self::construct_control(b);
-                    let (mut c, d) = a.split_at(p);
-                    c.append(b);
-                    c.append(d);
-                    c
-                }
-                Self::Concat(a, b) => {
-                    let mut r = Self::construct_control(a);
-                    r.append(Self::construct_control(b));
-                    r
-                }
-                Self::Builder(vs) => vs.clone().into_iter().collect(),
-            }
-        }
-    }
-
-    fn arb_array_construction() -> impl Strategy<Value = ArrayConstruction> {
-        let leaf = prop_oneof![
-            Just(ArrayConstruction::New),
-            any::<u8>().prop_map(ArrayConstruction::Singleton),
-        ];
-        // leaf
-        leaf.prop_recursive(
-            32, // 8 levels deep
-            128, // Shoot for maximum size of 256 nodes
-            10, // We put up to 10 items per collection
-            |inner| prop_oneof![
-                (inner.clone(), any::<usize>(), any::<u8>()).prop_map(|(a, i, v)| ArrayConstruction::Insert(Box::new(a), i, v)),
-                (inner.clone(), any::<usize>()).prop_map(|(a, i)| ArrayConstruction::Remove(Box::new(a), i)),
-                (inner.clone(), any::<usize>(), any::<u8>()).prop_map(|(a, i, v)| ArrayConstruction::Update(Box::new(a), i, v)),
-                (inner.clone(), any::<usize>(), any::<usize>()).prop_map(|(a, p1, p2)| ArrayConstruction::Slice(Box::new(a), p1, p2)),
-                (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::SliceTo(Box::new(a), p)),
-                (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::SliceFrom(Box::new(a), p)),
-                (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::SplitLeft(Box::new(a), p)),
-                (inner.clone(), any::<usize>()).prop_map(|(a, p)| ArrayConstruction::SplitRight(Box::new(a), p)),
-                (inner.clone(), any::<usize>(), inner.clone()).prop_map(|(a, p, b)| ArrayConstruction::Splice(Box::new(a), p, Box::new(b))),
-                (inner.clone(), inner).prop_map(|(a, b)| ArrayConstruction::Concat(Box::new(a), Box::new(b))),
-            ])
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum FocusConstruction {
-        New(ArrayConstruction, usize),
-    }
-
-    impl FocusConstruction {
-        fn construct_focus(&self) -> Focus<u8> {
-            match self {
-                Self::New(c, p) => {
-                    let arr = c.construct_array();
-                    Focus::new(&arr, p % (arr.count() + 1))
-                }
-            }
-        }
-
-        fn construct_control(&self) -> (Vector<u8>, usize) {
-            match self {
-                Self::New(c, p) => {
-                    let control = c.construct_control();
-                    let p = p % (control.len() + 1);
-                    (control, p)
-                }
-            }
-        }
-    }
-
-    fn arb_focus_construction() -> impl Strategy<Value = FocusConstruction> {
-        let leaf = (arb_array_construction(), any::<usize>()).prop_map(|(a, i)| FocusConstruction::New(a, i));
-        leaf
-    }
-
-    fn control_get_relative(control: &(Vector<u8>, usize), i: isize) -> Option<&u8> {
-        let tmp = (control.1 as isize) + i;
-        if tmp < 0 {
-            None
-        } else {
-            control.0.get(tmp as usize)
-        }
-    }
-
-    fn control_refocus(control: &(Vector<u8>, usize), by: isize) -> ((Vector<u8>, usize), isize) {
-        let control_index = if by >= 0 {
-            cmp::min(control.0.len() as isize, (control.1 as isize) + by) as usize
-        } else {
-            cmp::max(0, (control.1 as isize) + by) as usize
-        };
-        let moved = (control_index as isize) - (control.1 as isize);
-
-        ((control.0.clone(), control_index), moved)
-    }
-
-    proptest! {
-        #[test]
-        fn test_count(c in arb_array_construction()) {
-            let arr = c.construct_array();
-            let control = c.construct_control();
-
-            if arr.count() != control.len() {
-                println!("----------------\ncount was {:?} rather than {:?}\nExpected: {:?}\n\n{:?}\n\n\n", arr.count(), control.len(), control, arr);
-                panic!()
-            }
-        }
-
-        #[test]
-        fn test_get(c in arb_array_construction(), i in any::<usize>()) {
-            let arr = c.construct_array();
-            let control = c.construct_control();
-            if control.len() > 0 {
-                let i = i % control.len();
-
-                let a = arr.get(i);
-                let b = control.get(i).unwrap();
-
-                if a != b {
-                    println!("----------------\ngot {:?} rather than {:?} at index {:?}\nExpected: {:?}\n\n{:?}\n\n\n", arr.count(), control.len(), i, control, arr);
-                    panic!()
-                }
-            }
-        }
-
-        #[test]
-        fn test_focus(c in arb_focus_construction(), i in any::<isize>()) {
-            let focus = c.construct_focus();
-            let control = c.construct_control();
-            if control.0.len() > 0 {
-                let i = i % ((control.0.len() + 1) as isize);
-
-                let a = focus.get_relative(i);
-                let b = control_get_relative(&control, i);
-
-                if a != b {
-                    println!("----------------\ngot {:?} rather than {:?} at index {:?}\nControl: {:?}\n\n{:?}\n\n\n", a, b, i, control, focus);
-                    panic!()
-                }
-            }
-        }
-
-        #[test]
-        fn test_refocus(c in arb_focus_construction(), i in any::<isize>(), by in any::<isize>(), by2 in any::<isize>()) {
-            let mut focus = c.construct_focus();
-            let control = c.construct_control();
-            let initial_position = control.1;
-            if control.0.len() > 0 {
-                let i = i % ((control.0.len() + 1) as isize);
-
-                let moved = focus.refocus(by);
-                let (control, control_moved) = control_refocus(&control, by);
-
-                if moved != control_moved {
-                    println!("
-Invalid first refocus:
-expected move: {:?}, actual: {:?}
-control focus: {:?}
-actual focus: {:?}
-refocus by: {:?}, starting at {:?}
-
-
-", control_moved, moved, control, focus, by, initial_position);
-                    panic!();
-                }
-
-                let a = focus.get_relative(i);
-                let b = control_get_relative(&control, i);
-
-                if a != b {
-                    println!("
-Invalid first relative get:
-expected {:?}, actual {:?}
-at index {:?} relative to {:?}
-control focus: {:?}
-actual focus: {:?}
-refocus by: {:?}, starting at {:?}", b, a, i, control.1, control, focus, by, initial_position);
-
-
-                    panic!();
-                }
-
-                let moved2 = focus.refocus(by2);
-                let (control, control_moved2) = control_refocus(&control, by2);
-
-                if moved2 != control_moved2 {
-                    println!("
-Invalid second refocus:
-expected move: {:?}, actual: {:?}
-control focus: {:?}
-actual focus: {:?}
-refocus by: {:?}
-previously: refocus by {:?}, starting at {:?}, moving by {:?}
-
-
-", control_moved2, moved2, control, focus, by2, by, initial_position, moved);
-                    panic!();
-                }
-
-                let a = focus.get_relative(i);
-                let b = control_get_relative(&control, i);
-
-                if a != b {
-                    println!("
-Invalid second relative get:
-expected {:?}, actual {:?}
-at index {:?} relative to {:?}
-control focus: {:?}
-actual focus: {:?}
-refocus by: {:?} then {:?}, starting at {:?}", b, a, i, control.1, control, focus, by, by2, initial_position);
-
-
-                    panic!();
-                }
-            }
-        }
-
-        #[test]
-        fn test_cmp(c in arb_array_construction(), d in arb_array_construction()) {
-            let arr = c.construct_array();
-            let control = c.construct_control();
-
-            let arr2 = d.construct_array();
-            let control2 = d.construct_control();
-
-            assert_eq!(arr == arr2, control == control2);
-            assert_eq!(arr != arr2, control != control2);
-            assert_eq!(arr < arr2, control < control2);
-            assert_eq!(arr <= arr2, control <= control2);
-            assert_eq!(arr >= arr2, control >= control2);
-            assert_eq!(arr > arr2, control > control2);
-            assert_eq!(arr.partial_cmp(&arr2), control.partial_cmp(&control2));
-            assert_eq!(arr.cmp(&arr2), control.cmp(&control2));
-        }
-    }
-
-    #[test]
-    fn test_builder() {
-        for m in 0..=32u8 {
-            let mut b = Builder::new();
-            let mut c = Array::new();
-
-            for i in 0..m {
-                b.push(i);
-                c = c.insert(i as usize, i);
-            }
-
-            let a = b.build();
-            if a != c {
-                for j in 0..m {
-                    println!("at {:?}, actual: {:?}, expected: {:?}", j, a.get(j as usize), c.get(j as usize));
-                }
-            }
-
-            assert_eq!(b.build(), c);
-        }
+fn do_build_reverse<V: Trace + Clone + 'static>(vs: &[V]) -> Array<V> {
+    let l = vs.len();
+    if l == 0 {
+        Array::new()
+    } else if l == 1 {
+        Array::singleton(vs[0].clone())
+    } else if (l - 2) % 3 == 0 {
+        let recursive_length = (l - 2) / 3;
+        n3(
+            do_build_reverse(&vs[(recursive_length * 2) + 2..]),
+            /**/ vs[(recursive_length * 2) + 1].clone(),
+            do_build_reverse(&vs[recursive_length + 1..(recursive_length * 2) + 1]),
+            /**/ vs[recursive_length].clone(),
+            do_build_reverse(&vs[..recursive_length]),
+        )
+    } else if (l - 1) % 2 == 0 {
+        let recursive_length = (l - 1) / 2;
+        n2(
+            do_build_reverse(&vs[recursive_length + 1..]),
+            /**/ vs[recursive_length].clone(),
+            do_build_reverse(&vs[..recursive_length]),
+        )
+    } else {
+        let l = vs.len();
+        do_build_reverse(&vs[..l - 1]).insert(0, vs[l - 1].clone())
     }
 }

@@ -5,6 +5,8 @@ pub use map::*;
 mod array;
 pub use array::*;
 
+pub mod array_test;
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Find {
     Lt,

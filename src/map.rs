@@ -7,8 +7,6 @@ use std::cmp::Ordering::{self, *};
 use gc::{Gc, Trace, custom_trace};
 use gc_derive::{Trace, Finalize};
 
-use crate::Find;
-
 #[derive(Debug, Finalize)]
 pub struct Map<K: Trace + 'static, V: Trace + 'static>(Option<Gc<Node<K, V>>>);
 
@@ -42,6 +40,38 @@ fn n3<K: Trace + 'static, V: Trace + 'static>(l: Map<K, V>, lk: K, lv: V, m: Map
     let mc = m.count();
     let rc = r.count();
     Map(Some(Gc::new(N3([(l, lk, lv), (m, mk, mv)], r, lc + mc + rc + 2))))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Find {
+    Lt,
+    Leq,
+    Eq,
+    Geq,
+    Gt,
+}
+
+impl Find {
+    pub fn matches_eq(&self) -> bool {
+        match self {
+            Find::Leq | Find::Eq | Find::Geq => true,
+            _ => false,
+        }
+    }
+
+    pub fn matches_less(&self) -> bool {
+        match self {
+            Find::Lt | Find::Leq => true,
+            _ => false,
+        }
+    }
+
+    pub fn matches_greater(&self) -> bool {
+        match self {
+            Find::Geq | Find::Gt => true,
+            _ => false,
+        }
+    }
 }
 
 impl<K: Trace + 'static, V: Trace + 'static> Map<K, V> {
@@ -146,29 +176,42 @@ impl<K: Trace + 'static, V: Trace + 'static> Map<K, V> {
     }
 
     /// Time complexity: O(log(n))
-    pub fn get_value_max(&self) -> Option<&V> {
+    pub fn get_max(&self) -> Option<&V> {
         self.get_entry_max().map(|(_, v)| v)
     }
 
-    /// Time complexity: O(log(n))
-    pub fn get_max(&self) -> Option<&V> {
-        self.get_value_max()
-    }
-
-    fn producer_min(&self) -> Producer<K, V> {
-        let mut stack = Vec::new();
-        self.producer_min_(&mut stack);
-        return Producer(stack);
-    }
-
-    fn producer_min_(&self, stack: &mut Vec<(Map<K, V>, u8)>) {
-        stack.push((self.clone(), 0));
-        if let Some(n) = &self.0 {
-            match n.borrow() {
-                N2([(l, _, _)], _, _) | N3([(l, _, _), _], _, _) => l.producer_min_(stack),
-            }
+    pub fn get_entry_index(&self, at: usize) -> Option<(&K, &V)> {
+        if self.count() <= at {
+            return None;
+        }
+        match &self.0 {
+            None => None,
+            Some(n) => n.get_entry_index(at),
         }
     }
+
+    pub fn get_key_index(&self, at: usize) -> Option<&K> {
+        self.get_entry_index(at).map(|(k, _)| k)
+    }
+
+    pub fn get_index(&self, at: usize) -> Option<&V> {
+        self.get_entry_index(at).map(|(_, v)| v)
+    }
+
+    // fn producer_min(&self) -> Producer<K, V> {
+    //     let mut stack = Vec::new();
+    //     self.producer_min_(&mut stack);
+    //     return Producer(stack);
+    // }
+    //
+    // fn producer_min_(&self, stack: &mut Vec<(Map<K, V>, u8)>) {
+    //     stack.push((self.clone(), 0));
+    //     if let Some(n) = &self.0 {
+    //         match n.borrow() {
+    //             N2([(l, _, _)], _, _) | N3([(l, _, _), _], _, _) => l.producer_min_(stack),
+    //         }
+    //     }
+    // }
 }
 
 impl<K: Ord + Trace + 'static, V: Trace + 'static> Map<K, V> {
@@ -191,158 +234,30 @@ impl<K: Ord + Trace + 'static, V: Trace + 'static> Map<K, V> {
     }
 
     /// Time complexity: O(log(n))
-    pub fn get_entry_lt<Q: ?Sized>(&self, kx: &Q) -> Option<(&K, &V)> where K: Borrow<Q>, Q: Ord {
-        self.get_entry_find(kx, Find::Lt)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_key_lt<Q: ?Sized>(&self, kx: &Q) -> Option<&K> where K: Borrow<Q>, Q: Ord {
-        self.get_key_find(kx, Find::Lt)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_value_lt<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_find(kx, Find::Lt)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_lt<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_lt(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_entry_leq<Q: ?Sized>(&self, kx: &Q) -> Option<(&K, &V)> where K: Borrow<Q>, Q: Ord {
-        self.get_entry_find(kx, Find::Leq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_key_leq<Q: ?Sized>(&self, kx: &Q) -> Option<&K> where K: Borrow<Q>, Q: Ord {
-        self.get_key_find(kx, Find::Leq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_value_leq<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_find(kx, Find::Leq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_leq<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_leq(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_entry_eq<Q: ?Sized>(&self, kx: &Q) -> Option<(&K, &V)> where K: Borrow<Q>, Q: Ord {
+    pub fn get_entry<Q: ?Sized>(&self, kx: &Q) -> Option<(&K, &V)> where K: Borrow<Q>, Q: Ord {
         self.get_entry_find(kx, Find::Eq)
     }
 
     /// Time complexity: O(log(n))
-    pub fn get_key_eq<Q: ?Sized>(&self, kx: &Q) -> Option<&K> where K: Borrow<Q>, Q: Ord {
-        self.get_key_find(kx, Find::Eq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_value_eq<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
+    pub fn get<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
         self.get_value_find(kx, Find::Eq)
     }
 
     /// Time complexity: O(log(n))
-    pub fn get_eq<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_eq(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_entry<Q: ?Sized>(&self, kx: &Q) -> Option<(&K, &V)> where K: Borrow<Q>, Q: Ord {
-        self.get_entry_eq(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_key<Q: ?Sized>(&self, kx: &Q) -> Option<&K> where K: Borrow<Q>, Q: Ord {
-        self.get_key_eq(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_value<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_eq(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_entry_geq<Q: ?Sized>(&self, kx: &Q) -> Option<(&K, &V)> where K: Borrow<Q>, Q: Ord {
-        self.get_entry_find(kx, Find::Geq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_key_geq<Q: ?Sized>(&self, kx: &Q) -> Option<&K> where K: Borrow<Q>, Q: Ord {
-        self.get_key_find(kx, Find::Geq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_value_geq<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_find(kx, Find::Geq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_geq<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_geq(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_entry_gt<Q: ?Sized>(&self, kx: &Q) -> Option<(&K, &V)> where K: Borrow<Q>, Q: Ord {
-        self.get_entry_find(kx, Find::Gt)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_key_gt<Q: ?Sized>(&self, kx: &Q) -> Option<&K> where K: Borrow<Q>, Q: Ord {
-        self.get_key_find(kx, Find::Gt)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_value_gt<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_find(kx, Find::Gt)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn get_gt<Q: ?Sized>(&self, kx: &Q) -> Option<&V> where K: Borrow<Q>, Q: Ord {
-        self.get_value_gt(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn contains_find<Q: ?Sized>(&self, kx: &Q, f: Find) -> bool where K: Borrow<Q>, Q: Ord {
-        self.get_key_find(kx, f).is_some()
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn contains_lt<Q: ?Sized>(&self, kx: &Q) -> bool where K: Borrow<Q>, Q: Ord {
-        self.get_key_lt(kx).is_some()
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn contains_leq<Q: ?Sized>(&self, kx: &Q) -> bool where K: Borrow<Q>, Q: Ord {
-        self.get_key_leq(kx).is_some()
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn contains_eq<Q: ?Sized>(&self, kx: &Q) -> bool where K: Borrow<Q>, Q: Ord {
-        self.get_key_eq(kx).is_some()
-    }
-
-    /// Time complexity: O(log(n))
     pub fn contains<Q: ?Sized>(&self, kx: &Q) -> bool where K: Borrow<Q>, Q: Ord {
-        self.get_key(kx).is_some()
+        self.get(kx).is_some()
     }
 
     /// Time complexity: O(log(n))
-    pub fn contains_geq<Q: ?Sized>(&self, kx: &Q) -> bool where K: Borrow<Q>, Q: Ord {
-        self.get_key_geq(kx).is_some()
+    pub fn index_of<Q: ?Sized>(&self, kx: &Q) -> Option<usize> where K: Borrow<Q>, Q: Ord {
+        self.index_of_(kx, 0)
     }
 
-    /// Time complexity: O(log(n))
-    pub fn contains_gt<Q: ?Sized>(&self, kx: &Q) -> bool where K: Borrow<Q>, Q: Ord {
-        self.get_key_gt(kx).is_some()
+    fn index_of_<Q: ?Sized>(&self, kx: &Q, acc: usize) -> Option<usize> where K: Borrow<Q>, Q: Ord {
+        match &self.0 {
+            None => None,
+            Some(n) => n.index_of(kx, acc),
+        }
     }
 }
 
@@ -442,178 +357,33 @@ impl<K: Ord + Clone + Trace + 'static, V: Clone + Trace + 'static> Map<K, V> {
     }
 
     /// Time complexity: O(log(n))
-    pub fn remove_find<Q: ?Sized>(&self, kx: &Q, f: Find) -> Self where K: Borrow<Q>, Q: Ord {
-        match self.get_key_find(kx, f) {
+    pub fn remove<Q: ?Sized>(&self, kx: &Q) -> Self where K: Borrow<Q>, Q: Ord {
+        match self.get_key_find(kx, Find::Eq) {
             None => self.clone(),
             Some(kx) => Self::difference(self, &Map::singleton(kx.clone(), ())),
         }
     }
 
-    /// Time complexity: O(log(n))
-    pub fn remove_lt<Q: ?Sized>(&self, kx: &Q) -> Self where K: Borrow<Q>, Q: Ord {
-        self.remove_find(kx, Find::Lt)
-    }
+    // /// Time complexity: O(log(n))
+    // fn remove_min(&self) -> Self {
+    //     match self.get_key_min() {
+    //         None => self.clone(),
+    //         Some(kx) => self.remove(kx),
+    //     }
+    // }
 
     /// Time complexity: O(log(n))
-    pub fn remove_leq<Q: ?Sized>(&self, kx: &Q) -> Self where K: Borrow<Q>, Q: Ord {
-        self.remove_find(kx, Find::Leq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn remove_eq<Q: ?Sized>(&self, kx: &Q) -> Self where K: Borrow<Q>, Q: Ord {
-        self.remove_find(kx, Find::Eq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn remove<Q: ?Sized>(&self, kx: &Q) -> Self where K: Borrow<Q>, Q: Ord {
-        self.remove_eq(kx)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn remove_geq<Q: ?Sized>(&self, kx: &Q) -> Self where K: Borrow<Q>, Q: Ord {
-        self.remove_find(kx, Find::Geq)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn remove_gt<Q: ?Sized>(&self, kx: &Q) -> Self where K: Borrow<Q>, Q: Ord {
-        self.remove_find(kx, Find::Gt)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn remove_min(&self) -> Self {
-        match self.get_key_min() {
-            None => self.clone(),
-            Some(kx) => self.remove(kx),
-        }
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn remove_max(&self) -> Self {
+    fn remove_max(&self) -> Self {
         match self.get_key_max() {
             None => self.clone(),
             Some(kx) => self.remove(kx),
         }
     }
 
-    /// Time complexity: O(log(n))
-    pub fn try_update_find<Q: ?Sized, E, F: FnMut(&V) -> Result<V, E>>(&self, kx: &Q, f: Find, mut fun: F) -> Result<Self, E> where
-        K: Borrow<Q>, Q: Ord {
-        match self.get_entry_find(kx, f) {
-            None => Ok(self.clone()),
-            Some((k, v)) => Ok(self.insert(k.clone(), fun(v)?)),
-        }
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update_find<Q: ?Sized, F: FnMut(&V) -> V>(&self, kx: &Q, f: Find, mut fun: F) -> Self where
-        K: Borrow<Q>, Q: Ord {
-        match self.try_update_find::<_, !, _>(kx, f, |v| Ok(fun(v))) {
-            Ok(yay) => yay,
-            Err(_) => unreachable!(),
-        }
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn try_update_lt<Q: ?Sized, E, F: FnMut(&V) -> Result<V, E>>(&self, kx: &Q, fun: F) -> Result<Self, E> where
-        K: Borrow<Q>, Q: Ord {
-            self.try_update_find(kx, Find::Lt, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update_lt<Q: ?Sized, F: FnMut(&V) -> V>(&self, kx: &Q, fun: F) -> Self where
-        K: Borrow<Q>, Q: Ord {
-            self.update_find(kx, Find::Lt, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn try_update_leq<Q: ?Sized, E, F: FnMut(&V) -> Result<V, E>>(&self, kx: &Q, fun: F) -> Result<Self, E> where
-        K: Borrow<Q>, Q: Ord {
-            self.try_update_find(kx, Find::Leq, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update_leq<Q: ?Sized, F: FnMut(&V) -> V>(&self, kx: &Q, fun: F) -> Self where
-        K: Borrow<Q>, Q: Ord {
-            self.update_find(kx, Find::Leq, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn try_update_eq<Q: ?Sized, E, F: FnMut(&V) -> Result<V, E>>(&self, kx: &Q, fun: F) -> Result<Self, E> where
-        K: Borrow<Q>, Q: Ord {
-            self.try_update_find(kx, Find::Eq, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update_eq<Q: ?Sized, F: FnMut(&V) -> V>(&self, kx: &Q, fun: F) -> Self where
-        K: Borrow<Q>, Q: Ord {
-            self.update_find(kx, Find::Eq, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn try_update<Q: ?Sized, E, F: FnMut(&V) -> Result<V, E>>(&self, kx: &Q, fun: F) -> Result<Self, E> where
-        K: Borrow<Q>, Q: Ord {
-            self.try_update_eq(kx, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update<Q: ?Sized, F: FnMut(&V) -> V>(&self, kx: &Q, fun: F) -> Self where
-        K: Borrow<Q>, Q: Ord {
-            self.update_eq(kx, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn try_update_geq<Q: ?Sized, E, F: FnMut(&V) -> Result<V, E>>(&self, kx: &Q, fun: F) -> Result<Self, E> where
-        K: Borrow<Q>, Q: Ord {
-            self.try_update_find(kx, Find::Geq, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update_geq<Q: ?Sized, F: FnMut(&V) -> V>(&self, kx: &Q, fun: F) -> Self where
-        K: Borrow<Q>, Q: Ord {
-            self.update_find(kx, Find::Geq, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn try_update_gt<Q: ?Sized, E, F: FnMut(&V) -> Result<V, E>>(&self, kx: &Q, fun: F) -> Result<Self, E> where
-        K: Borrow<Q>, Q: Ord {
-            self.try_update_find(kx, Find::Gt, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update_gt<Q: ?Sized, F: FnMut(&V) -> V>(&self, kx: &Q, fun: F) -> Self where
-        K: Borrow<Q>, Q: Ord {
-            self.update_find(kx, Find::Gt, fun)
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn try_update_min<E, F: FnMut(&V) -> Result<V, E>>(&self, fun: F) -> Result<Self, E> {
-            match self.get_key_min() {
-                None => Ok(self.clone()),
-                Some(kx) => self.try_update(kx, fun),
-            }
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update_min<F: FnMut(&V) -> V>(&self, fun: F) -> Self  {
-        match self.get_key_min() {
+    pub fn remove_index<Q: ?Sized>(&self, at: usize) -> Self where K: Borrow<Q>, Q: Ord {
+        match self.get_key_index(at) {
             None => self.clone(),
-            Some(kx) => self.update(kx, fun),
-        }
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn try_update_max<E, F: FnMut(&V) -> Result<V, E>>(&self, fun: F) -> Result<Self, E> {
-            match self.get_key_max() {
-                None => Ok(self.clone()),
-                Some(kx) => self.try_update(kx, fun),
-            }
-    }
-
-    /// Time complexity: O(log(n))
-    pub fn update_max<F: FnMut(&V) -> V>(&self, fun: F) -> Self  {
-        match self.get_key_max() {
-            None => self.clone(),
-            Some(kx) => self.update(kx, fun),
+            Some(k) => self.remove(k.borrow()),
         }
     }
 
@@ -626,16 +396,64 @@ impl<K: Ord + Clone + Trace + 'static, V: Clone + Trace + 'static> Map<K, V> {
         split(&from_start, end).0
     }
 
-    pub fn slice_from<Q: ?Sized>(&self, start: &Q) -> Self where K: Borrow<Q>, Q: Ord {
-        let (_, lx, lr) = split(self, start);
-        match lx {
-            Some((lk, lv)) => lr.insert(lk.clone(), lv.clone()),
-            None => lr,
+    pub fn slice_index<Q: ?Sized>(&self, start: usize, end: usize) -> Option<Self> where K: Borrow<Q>, Q: Ord {
+        if end < start {
+            return None;
+        }
+
+        if start == self.count() && end == start {
+            return Some(Self::new());
+        }
+
+        match self.get_key_index(start) {
+            None => return None,
+            Some(k_start) => {
+                if end == self.count() {
+                    return Some(self.split(k_start.borrow()).1);
+                }
+                match self.get_key_index(end) {
+                    None => return None,
+                    Some(k_end) => {
+                        return Some(self.slice(k_start.borrow(), k_end.borrow()));
+                    }
+                }
+            }
         }
     }
 
+    pub fn slice_from<Q: ?Sized>(&self, start: &Q) -> Self where K: Borrow<Q>, Q: Ord {
+        self.split(start).1
+    }
+
     pub fn slice_to<Q: ?Sized>(&self, end: &Q) -> Self where K: Borrow<Q>, Q: Ord {
-        split(self, end).0
+        self.split(end).0
+    }
+
+    pub fn split<Q: ?Sized>(&self, at: &Q) -> (Self, Self) where K: Borrow<Q>, Q: Ord {
+        let (ll, lx, mut lr) = split(self, at);
+        if let Some((lk, lv)) = lx {
+            lr = lr.insert(lk.clone(), lv.clone());
+        }
+        return (ll, lr);
+    }
+
+    pub fn split_inclusive<Q: ?Sized>(&self, at: &Q) -> (Self, Self) where K: Borrow<Q>, Q: Ord {
+        let (mut ll, lx, lr) = split(self, at);
+        if let Some((lk, lv)) = lx {
+            ll = ll.insert(lk.clone(), lv.clone());
+        }
+        return (ll, lr);
+    }
+
+    pub fn split_at<Q: ?Sized>(&self, at: usize) -> Option<(Self, Self)> where K: Borrow<Q>, Q: Ord {
+        if at == self.count() {
+            return Some((self.clone(), Self::new()));
+        } else {
+            match self.get_key_index(at) {
+                None => return None,
+                Some(k) => return Some(self.split(k.borrow())),
+            }
+        }
     }
 }
 
@@ -649,6 +467,25 @@ impl<K: Trace + 'static, V: Trace + 'static> Node<K, V> {
     fn count(&self) -> usize {
         match self {
             N2(_, _, c) | N3(_, _, c) => *c,
+        }
+    }
+
+    fn get_entry_index(&self, i: usize) -> Option<(&K, &V)> {
+        match self {
+            N2([(l, k, v)], r, _) => match i.cmp(&l.count()) {
+                Less => l.get_entry_index(i),
+                Equal => Some((k, v)),
+                Greater => r.get_entry_index(i - (l.count() + 1)),
+            }
+            N3([(l, lk, lv), (m, mk, mv)], r, _) => match i.cmp(&l.count()) {
+                Less => l.get_entry_index(i),
+                Equal => Some((lk, lv)),
+                Greater => match (i - (l.count() + 1)).cmp(&m.count()) {
+                    Less => m.get_entry_index(i - (l.count() + 1)),
+                    Equal => Some((mk, mv)),
+                    Greater => r.get_entry_index(i - (l.count() + 1 + m.count() + 1))
+                }
+            }
         }
     }
 }
@@ -672,17 +509,42 @@ impl<K: Ord + Trace + 'static, V: Trace + 'static> Node<K, V> {
                     Less => l.get_entry_find(kx, f).or(if f.matches_greater() { Some((lk, lv)) } else { None }),
                     Equal => match f {
                         Find::Lt => l.get_entry_find(kx, f),
+                        Find::Gt if m.count() == 0 => Some((mk, mv)),
                         Find::Gt => m.get_entry_find(kx, f),
                         _ => Some((lk, lv)),
                     }
                     Greater => match kx.cmp(mk.borrow()) {
-                        Less => m.get_entry_find(kx, f).or(if f.matches_greater() { Some((mk, mv)) } else { None }),
+                        Less => m.get_entry_find(kx, f).or(if f.matches_greater() { Some((mk, mv)) } else if f.matches_less() { Some((lk, lv)) } else { None }),
                         Equal => match f {
+                            Find::Lt if m.count() == 0 => Some((lk, lv)),
                             Find::Lt => m.get_entry_find(kx, f),
                             Find::Gt => r.get_entry_find(kx, f),
                             _ => Some((mk, mv)),
                         }
                         Greater => r.get_entry_find(kx, f).or(if f.matches_less() { Some((mk, mv)) } else { None }),
+                    }
+                }
+            }
+        }
+    }
+
+    fn index_of<Q: ?Sized>(&self, kx: &Q, acc: usize) -> Option<usize> where K: Borrow<Q>, Q: Ord {
+        match self {
+            N2([(l, k, _v)], r, _) => {
+                match kx.cmp(k.borrow()) {
+                    Less => l.index_of_(kx, acc),
+                    Equal => Some(acc + l.count()),
+                    Greater => r.index_of_(kx, acc + l.count() + 1),
+                }
+            }
+            N3([(l, lk, _lv), (m, mk, _mv)], r, _) => {
+                match kx.cmp(lk.borrow()) {
+                    Less => l.index_of_(kx, acc),
+                    Equal => Some(acc + l.count()),
+                    Greater => match kx.cmp(mk.borrow()) {
+                        Less => m.index_of_(kx, acc + l.count() + 1),
+                        Equal => Some(acc + l.count() + 1 + m.count()),
+                        Greater => r.index_of_(kx, acc + l.count() + 1 + m.count() + 1),
                     }
                 }
             }
@@ -976,17 +838,19 @@ impl<K: PartialEq + Clone + Trace + 'static, V: PartialEq + Clone + Trace + 'sta
             _ => {}
         };
 
-        let mut p1 = self.producer_min();
-        let mut p2 = rhs.producer_min();
+        let mut p1 = MapFocus::new(self, 0);
+        let mut p2 = MapFocus::new(rhs, 0);
 
         loop {
-            match (step_next(&mut p1.0), step_next(&mut p2.0)) {
+            match (p1.get_relative_entry(0), p2.get_relative_entry(0)) {
                 (None, None) => return true,
                 (Some(_), None) | (None, Some(_)) => return false,
-                (Some((xk, xv)), Some((yk, yv))) => {
-                    if xk != yk || xv != yv {
+                (Some(xv), Some(yv)) => {
+                    if xv != yv {
                         return false;
                     }
+                    p1.refocus(1);
+                    p2.refocus(1);
                 }
             }
         }
@@ -1005,11 +869,11 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
             _ => {}
         };
 
-        let mut p1 = self.producer_min();
-        let mut p2 = rhs.producer_min();
+        let mut p1 = MapFocus::new(self, 0);
+        let mut p2 = MapFocus::new(rhs, 0);
 
         loop {
-            match (step_next(&mut p1.0), step_next(&mut p2.0)) {
+            match (p1.get_relative_entry(0), p2.get_relative_entry(0)) {
                 (None, None) => return Some(Ordering::Equal),
                 (Some(_), None) => return Some(Ordering::Greater),
                 (None, Some(_)) => return Some(Ordering::Less),
@@ -1023,7 +887,10 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
                                 None => return None,
                                 Some(Ordering::Less) => return Some(Ordering::Less),
                                 Some(Ordering::Greater) => return Some(Ordering::Greater),
-                                Some(Ordering::Equal) => {}
+                                Some(Ordering::Equal) => {
+                                    p1.refocus(1);
+                                    p2.refocus(1);
+                                }
                             }
                         }
                     }
@@ -1041,11 +908,11 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
             _ => {}
         };
 
-        let mut p1 = self.producer_min();
-        let mut p2 = rhs.producer_min();
+        let mut p1 = MapFocus::new(self, 0);
+        let mut p2 = MapFocus::new(rhs, 0);
 
         loop {
-            match (step_next(&mut p1.0), step_next(&mut p2.0)) {
+            match (p1.get_relative_entry(0), p2.get_relative_entry(0)) {
                 (None, None) => return false,
                 (Some(_), None) => return false,
                 (None, Some(_)) => return true,
@@ -1059,7 +926,10 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
                                 None => return false,
                                 Some(Ordering::Less) => return true,
                                 Some(Ordering::Greater) => return false,
-                                Some(Ordering::Equal) => {}
+                                Some(Ordering::Equal) => {
+                                    p1.refocus(1);
+                                    p2.refocus(1);
+                                }
                             }
                         }
                     }
@@ -1077,11 +947,11 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
             _ => {}
         };
 
-        let mut p1 = self.producer_min();
-        let mut p2 = rhs.producer_min();
+        let mut p1 = MapFocus::new(self, 0);
+        let mut p2 = MapFocus::new(rhs, 0);
 
         loop {
-            match (step_next(&mut p1.0), step_next(&mut p2.0)) {
+            match (p1.get_relative_entry(0), p2.get_relative_entry(0)) {
                 (None, None) => return true,
                 (Some(_), None) => return false,
                 (None, Some(_)) => return true,
@@ -1095,7 +965,10 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
                                 None => return false,
                                 Some(Ordering::Less) => return true,
                                 Some(Ordering::Greater) => return false,
-                                Some(Ordering::Equal) => {}
+                                Some(Ordering::Equal) => {
+                                    p1.refocus(1);
+                                    p2.refocus(1);
+                                }
                             }
                         }
                     }
@@ -1113,11 +986,11 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
             _ => {}
         };
 
-        let mut p1 = self.producer_min();
-        let mut p2 = rhs.producer_min();
+        let mut p1 = MapFocus::new(self, 0);
+        let mut p2 = MapFocus::new(rhs, 0);
 
         loop {
-            match (step_next(&mut p1.0), step_next(&mut p2.0)) {
+            match (p1.get_relative_entry(0), p2.get_relative_entry(0)) {
                 (None, None) => return true,
                 (Some(_), None) => return true,
                 (None, Some(_)) => return false,
@@ -1131,7 +1004,10 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
                                 None => return false,
                                 Some(Ordering::Less) => return false,
                                 Some(Ordering::Greater) => return true,
-                                Some(Ordering::Equal) => {}
+                                Some(Ordering::Equal) => {
+                                    p1.refocus(1);
+                                    p2.refocus(1);
+                                }
                             }
                         }
                     }
@@ -1149,11 +1025,11 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
             _ => {}
         };
 
-        let mut p1 = self.producer_min();
-        let mut p2 = rhs.producer_min();
+        let mut p1 = MapFocus::new(self, 0);
+        let mut p2 = MapFocus::new(rhs, 0);
 
         loop {
-            match (step_next(&mut p1.0), step_next(&mut p2.0)) {
+            match (p1.get_relative_entry(0), p2.get_relative_entry(0)) {
                 (None, None) => return false,
                 (Some(_), None) => return true,
                 (None, Some(_)) => return false,
@@ -1167,7 +1043,10 @@ impl<K: PartialOrd + Clone + Trace + 'static, V: PartialOrd + Clone + Trace + 's
                                 None => return false,
                                 Some(Ordering::Less) => return false,
                                 Some(Ordering::Greater) => return true,
-                                Some(Ordering::Equal) => {}
+                                Some(Ordering::Equal) => {
+                                    p1.refocus(1);
+                                    p2.refocus(1);
+                                }
                             }
                         }
                     }
@@ -1183,123 +1062,265 @@ impl<K: Ord + Clone + Trace + 'static, V: Ord + Clone + Trace + 'static> Ord for
     }
 }
 
-pub struct Producer<K: Trace + 'static, V: Trace + 'static>(Vec<(Map<K, V>, u8)>);
+#[derive(Debug, Trace, Finalize)]
+pub struct MapFocus<K: Trace + 'static, V: Trace + 'static>(Vec<(Map<K, V>, u8)>);
 
-fn step_next<K: Clone + Trace + 'static, V: Clone + Trace + 'static>(positions: &mut Vec<(Map<K, V>, u8)>) -> Option<(K, V)> {
-    let len = positions.len();
-    let p = positions[len - 1].clone();
+impl<K: Trace + 'static, V: Trace + 'static> MapFocus<K, V> {
+    pub fn new(map: &Map<K, V>, p: usize) -> Self {
+        let mut v = vec![];
+        focus_new(map, p, &mut v);
+        Self(v)
+    }
 
-    match &(p.0).0 {
-        None => None,
-        Some(n) => match (n.borrow(), p.1) {
-            (N2(..), 3..=5) | (N3(..), 5) if len == 1 => None,
-            (N2(..), 3..=5) | (N3(..), 5) => {
-                positions.pop();
-                step_next(positions)
+    pub fn get_relative_entry(&self, i: isize) -> Option<(&K, &V)> {
+        let mut h = self.0.len();
+        let mut submap_p = 0;
+
+        while h > 0 {
+            let (map, node_position) = &self.0[h - 1];
+            submap_p = submap_position(map, *node_position, submap_p);
+
+            let submap_i = (submap_p as isize) + i;
+            if 0 <= submap_i && submap_i < (map.count() as isize) {
+                return Some(map.get_entry_index(submap_i as usize).unwrap());
+            } else {
+                h -= 1;
             }
-            (N2([(l, _, _)], _, _), 0) => {
-                positions[len - 1].1 = 1;
-                positions.push((l.clone(), 0));
-                step_next(positions)
+        }
+
+        return None;
+    }
+
+    pub fn get_relative_key(&self, i: isize) -> Option<&K> {
+        self.get_relative_entry(i).map(|(k, _)| k)
+    }
+
+    pub fn get_relative(&self, i: isize) -> Option<&V> {
+        self.get_relative_entry(i).map(|(_, v)| v)
+    }
+
+    pub fn refocus(&mut self, by: isize) -> isize {
+        if self.0.is_empty() {
+            return 0;
+        }
+
+        let mut submap_p = 0;
+
+        loop {
+            let (map, node_position) = &self.0.pop().unwrap();
+            submap_p = submap_position(map, *node_position, submap_p);
+
+            let submap_i = (submap_p as isize).saturating_add(by);
+            if 0 <= submap_i && submap_i <= (map.count() as isize) {
+                focus_new(map, submap_i as usize, &mut self.0);
+                return by;
             }
-            (N2([(_, k, v)], _, _), 1) => {
-                positions[len - 1].1 = 2;
-                Some((k.clone(), v.clone()))
+
+            if self.0.is_empty() {
+                if by <= 0 {
+                    focus_new(map, 0, &mut self.0);
+                    return -(submap_p as isize);
+                } else {
+                    focus_new(map, map.count(), &mut self.0);
+                    return (self.0[0].0.count() - submap_p) as isize;
+                }
             }
-            (N2(_, r, _), 2) => {
-                positions[len - 1].1 = 3;
-                positions.push((r.clone(), 0));
-                step_next(positions)
-            }
-            (N3([(l, _, _), _], _, _), 0) => {
-                positions[len - 1].1 = 1;
-                positions.push((l.clone(), 0));
-                step_next(positions)
-            }
-            (N3([(_, lk, lv), _], _, _), 1) => {
-                positions[len - 1].1 = 2;
-                Some((lk.clone(), lv.clone()))
-            }
-            (N3([_, (m, _, _)], _, _), 2) => {
-                positions[len - 1].1 = 3;
-                positions.push((m.clone(), 0));
-                step_next(positions)
-            }
-            (N3([_, (_, mk, mv)], _, _), 3) => {
-                positions[len - 1].1 = 4;
-                Some((mk.clone(), mv.clone()))
-            }
-            (N3(_, r, _), 4) => {
-                positions[len - 1].1 = 5;
-                positions.push((r.clone(), 0));
-                step_next(positions)
-            }
-            (N2(..), 6..=255) | (N3(..), 6..=255) => unreachable!(),
         }
     }
 }
 
-// fn step_prev<K: Clone, V: Clone>(positions: &mut Vec<(Map<K, V>, u8)>) -> Option<(K, V)> {
-//     let len = positions.len();
-//     let p = positions[len - 1].clone();
-//
-//     match &(p.0).0 {
-//         None => None,
-//         Some(n) => match (n.borrow(), p.1) {
-//             (_, 0) if len == 1 => None,
-//             (_, 0) => {
-//                 positions.pop();
-//                 step_prev(positions)
-//             }
-//             (N2(_, r, _), 3..=5) => {
-//                 positions[len - 1].1 = 2;
-//                 positions.push((r.clone(), 5));
-//                 step_prev(positions)
-//             }
-//             (N2([(_, k, v)], _, _), 2) => {
-//                 positions[len - 1].1 = 1;
-//                 Some((k.clone(), v.clone()))
-//             }
-//             (N2([(l, _, _)], _, _), 1) => {
-//                 positions[len - 1].1 = 0;
-//                 positions.push((l.clone(), 5));
-//                 step_prev(positions)
-//             }
-//             (N3(_, r, _), 5) => {
-//                 positions[len - 1].1 = 4;
-//                 positions.push((r.clone(), 5));
-//                 step_prev(positions)
-//             }
-//             (N3([_, (_, mk, mv)], _, _), 4) => {
-//                 positions[len - 1].1 = 3;
-//                 Some((mk.clone(), mv.clone()))
-//             }
-//             (N3([_, (m, _, _)], _, _), 3) => {
-//                 positions[len - 1].1 = 2;
-//                 positions.push((m.clone(), 5));
-//                 step_prev(positions)
-//             }
-//             (N3([(_, lk, lv), _], _, _), 2) => {
-//                 positions[len - 1].1 = 1;
-//                 Some((lk.clone(), lv.clone()))
-//             }
-//             (N3([(l, _, _), _], _, _), 1) => {
-//                 positions[len - 1].1 = 0;
-//                 positions.push((l.clone(), 5));
-//                 step_prev(positions)
-//             }
-//             (N2(..), 6..=255) | (N3(..), 6..=255) => unreachable!(),
-//         }
-//     }
-// }
+fn focus_new<K: Trace + 'static, V: Trace + 'static>(map: &Map<K, V>, p: usize, vs: &mut Vec<(Map<K, V>, u8)>) {
+    match &map.0 {
+        None => return,
+        Some(n) => match n.borrow() {
+            N2([(l, _, _)], r, _) => match p.cmp(&l.count()) {
+                Less => {
+                    vs.push((map.clone(), 0));
+                    focus_new(l, p, vs)
+                }
+                Equal => vs.push((map.clone(), 1)),
+                Greater => {
+                    vs.push((map.clone(), 2));
+                    focus_new(r, p - (l.count() + 1), vs)
+                }
+            }
+            N3([(l, _, _), (m, _, _)], r, _) => match p.cmp(&l.count()) {
+                Less => {
+                    vs.push((map.clone(), 0));
+                    focus_new(l, p, vs)
+                }
+                Equal => vs.push((map.clone(), 1)),
+                Greater => match (p - (l.count() + 1)).cmp(&m.count()) {
+                    Less => {
+                        vs.push((map.clone(), 2));
+                        focus_new(m, p - (l.count() + 1), vs)
+                    }
+                    Equal => vs.push((map.clone(), 3)),
+                    Greater => {
+                        vs.push((map.clone(), 4));
+                        focus_new(r, p - (l.count() + 1 + m.count() + 1), vs)
+                    }
+                }
+            }
+        }
+    }
+}
 
-// impl<K: Clone, V: Clone> Iterator for Producer<K, V> {
-//     type Item = (K, V);
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         step_next(&mut self.0)
-//     }
-// }
+fn submap_position<K: Trace + 'static, V: Trace + 'static>(map: &Map<K, V>, node_position: u8, prev: usize) -> usize {
+    match &map.0 {
+        None => return 0,
+        Some(n) => match n.borrow() {
+            N2([(l, _, _)], _, _) => match node_position {
+                0 => prev,
+                1 => l.count(),
+                2 => l.count() + 1 + prev,
+                _ => unreachable!(),
+            }
+            N3([(l, _, _), (m, _, _)], _, _) => match node_position {
+                0 => prev,
+                1 => l.count(),
+                2 => l.count() + 1 + prev,
+                3 => l.count() + 1 + m.count(),
+                4 => l.count() + 1 + m.count() + 1 + prev,
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+#[derive(Trace, Finalize)]
+pub struct MapBuilder<K: Trace + Clone + 'static, V: Trace + Clone + 'static>(Vec<(K, V)>, Vec<(K, V)>);
+
+impl<K: Trace + Clone + Ord + 'static, V: Trace + Clone + 'static> MapBuilder<K, V> {
+    pub fn new() -> Self {
+        MapBuilder(Vec::new(), Vec::new())
+    }
+
+    pub fn push_front(&mut self, k: K, v: V) -> Result<(), ()> {
+        match self.0.last() {
+            Some(l) => {
+                if k < l.0 {
+                    self.0.push((k, v));
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            }
+            None => {
+                match self.1.get(0) {
+                    Some(f) => {
+                        if k < f.0 {
+                            self.0.push((k, v));
+                            Ok(())
+                        } else {
+                            Err(())
+                        }
+                    }
+                    None => {
+                        self.0.push((k, v));
+                        Ok(())
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn push_back(&mut self, k: K, v: V) -> Result<(), ()> {
+        match self.1.last() {
+            Some(l) => {
+                if k > l.0 {
+                    self.1.push((k, v));
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            }
+            None => {
+                match self.0.get(0) {
+                    Some(f) => {
+                        if k > f.0 {
+                            self.1.push((k, v));
+                            Ok(())
+                        } else {
+                            Err(())
+                        }
+                    }
+                    None => {
+                        self.1.push((k, v));
+                        Ok(())
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn build(&self) -> Map<K, V> {
+        let start = do_build_reverse(&self.0[..]);
+        let end = do_build(&self.1[..]);
+        Map::union(&start, &end)
+    }
+}
+
+fn do_build<K: Trace + Clone + Ord + 'static, V: Trace + Clone + 'static>(vs: &[(K, V)]) -> Map<K, V> {
+    let l = vs.len();
+    if l == 0 {
+        Map::new()
+    } else if l == 1 {
+        Map::singleton(vs[0].0.clone(), vs[0].1.clone())
+    } else if (l - 2) % 3 == 0 {
+        let recursive_length = (l - 2) / 3;
+        n3(
+            do_build(&vs[..recursive_length]),
+            /**/ vs[recursive_length].0.clone(),
+            /**/ vs[recursive_length].1.clone(),
+            do_build(&vs[recursive_length + 1..(recursive_length * 2) + 1]),
+            /**/ vs[(recursive_length * 2) + 1].0.clone(),
+            /**/ vs[(recursive_length * 2) + 1].1.clone(),
+            do_build(&vs[(recursive_length * 2) + 2..]),
+        )
+    } else if (l - 1) % 2 == 0 {
+        let recursive_length = (l - 1) / 2;
+        n2(
+            do_build(&vs[..recursive_length]),
+            /**/ vs[recursive_length].0.clone(),
+            /**/ vs[recursive_length].1.clone(),
+            do_build(&vs[recursive_length + 1..]),
+        )
+    } else {
+        do_build(&vs[1..]).insert(vs[0].0.clone(), vs[0].1.clone())
+    }
+}
+
+fn do_build_reverse<K: Trace + Clone + Ord + 'static, V: Trace + Clone + 'static>(vs: &[(K, V)]) -> Map<K, V> {
+    let l = vs.len();
+    if l == 0 {
+        Map::new()
+    } else if l == 1 {
+        Map::singleton(vs[0].0.clone(), vs[0].1.clone())
+    } else if (l - 2) % 3 == 0 {
+        let recursive_length = (l - 2) / 3;
+        n3(
+            do_build_reverse(&vs[(recursive_length * 2) + 2..]),
+            /**/ vs[(recursive_length * 2) + 1].0.clone(),
+            /**/ vs[(recursive_length * 2) + 1].1.clone(),
+            do_build_reverse(&vs[recursive_length + 1..(recursive_length * 2) + 1]),
+            /**/ vs[recursive_length].0.clone(),
+            /**/ vs[recursive_length].1.clone(),
+            do_build_reverse(&vs[..recursive_length]),
+        )
+    } else if (l - 1) % 2 == 0 {
+        let recursive_length = (l - 1) / 2;
+        n2(
+            do_build_reverse(&vs[recursive_length + 1..]),
+            /**/ vs[recursive_length].0.clone(),
+            /**/ vs[recursive_length].1.clone(),
+            do_build_reverse(&vs[..recursive_length]),
+        )
+    } else {
+        let l = vs.len();
+        do_build_reverse(&vs[..l - 1]).insert(vs[l - 1].clone().0, vs[l - 1].clone().1)
+    }
+}
 
 
 

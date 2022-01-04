@@ -1,4 +1,3 @@
-
 [package]
 name = "gc-immutable-collections-fuzz"
 version = "0.0.0"
@@ -49,5 +48,41 @@ doc = false
 [[bin]]
 name = "fuzz_array_cmp"
 path = "fuzz_targets/fuzz_array_cmp.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "map"
+path = "fuzz_targets/map.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "map_count"
+path = "fuzz_targets/map_count.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "map_get"
+path = "fuzz_targets/map_get.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "map_focus_simple"
+path = "fuzz_targets/map_focus_simple.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "map_focus_refocus"
+path = "fuzz_targets/map_focus_refocus.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "map_cmp"
+path = "fuzz_targets/map_cmp.rs"
 test = false
 doc = false
